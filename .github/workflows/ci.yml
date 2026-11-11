@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev/*, feat/*]
+    tags: ['v*']
+  pull_request:
+    branches: [main, dev/*]
+
+jobs:
+  validate:
+    name: Lint, Test & Hygiene Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - name: Install Python Dependencies
+        run: pip install numpy soundfile scipy jiwer
+
+      - name: TypeScript Typecheck
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Benchmark Test Suite
+        run: python benchmark/test_benchmark_suite.py
+
+      - name: Retained Test Suites
+        run: node scripts/run-retained-tests.mjs
+
+      - name: IPC Surface Check
+        run: node scripts/check-ipc-surface.mjs
+
+      - name: Release Hygiene Verification
+        run: node scripts/release-check.mjs
+
+  build-installer:
+    name: Build Unsigned Windows Installer
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: validate
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - name: Build Renderer
+        run: npm run build:renderer
+
+      - name: Build Unsigned Windows Installer
+        run: npm run dist:win
+
+      - name: Upload Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhwaniflow-windows-installer
+          path: dist/*.exe

@@ -1,0 +1,2352 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const Module = require("node:module");
+const { EventEmitter } = require("node:events");
+const childProcess = require("node:child_process");
+const fs = require("node:fs");
+
+const fakeClipboard = {
+  text: "",
+  html: "",
+  rtf: "",
+  image: null,
+  formats: ["text/plain"],
+  buffers: {},
+  writes: [],
+  availableFormats() {
+    return this.formats;
+  },
+  readText() {
+    return this.text;
+  },
+  readBuffer(format) {
+    return Buffer.from(this.buffers[format] ?? "");
+  },
+  writeText(text, type) {
+    this.writes.push(["writeText", text, type]);
+    if (type === "selection") return;
+    this.buffers = {};
+    this.text = text;
+    this.html = "";
+    this.rtf = "";
+    this.image = null;
+    this.formats = ["text/plain"];
+  },
+  readHTML() {
+    return this.html;
+  },
+  readRTF() {
+    return this.rtf;
+  },
+  write(payload) {
+    this.buffers = {};
+    this.text = payload.text || "";
+    this.html = payload.html || "";
+    this.rtf = payload.rtf || "";
+    this.image = payload.image || null;
+    this.formats = [];
+    if (Object.hasOwn(payload, "text")) this.formats.push("text/plain");
+    if (Object.hasOwn(payload, "html")) this.formats.push("text/html");
+    if (Object.hasOwn(payload, "rtf")) this.formats.push("text/rtf");
+    if (Object.hasOwn(payload, "image")) this.formats.push("image/png");
+    this.writes.push(["write", payload]);
+  },
+  readImage() {
+    return this.image || emptyImage;
+  },
+  writeImage(image) {
+    this.buffers = {};
+    this.text = "";
+    this.html = "";
+    this.rtf = "";
+    this.image = image;
+    this.formats = image && !image.isEmpty() ? ["image/png"] : [];
+    this.writes.push(["writeImage", image]);
+  },
+};
+
+const emptyImage = { isEmpty: () => true };
+const nonEmptyImage = { isEmpty: () => false };
+
+const clipboardModulePath = require.resolve("../../src/helpers/clipboard");
+
+const originalLoad = Module._load;
+
+// The held-modifier wait spawns the fast-paste binary ahead of every Linux paste.
+// Tests that pin the paste chain's spawn sequence see it as already released;
+// the wait itself is covered by tests that load with `realModifierWait`.
+function loadClipboardManager({
+  spawn,
+  spawnSync,
+  cosmicAppId,
+  accessibility = true,
+  realModifierWait = false,
+  realUinputAccess = false,
+} = {}) {
+  delete require.cache[clipboardModulePath];
+
+  Module._load = function loadWithMocks(request, parent, isMain) {
+    if (request === "electron") {
+      return {
+        clipboard: fakeClipboard,
+        systemPreferences: {
+          isTrustedAccessibilityClient: () => accessibility,
+        },
+      };
+    }
+    if (request === "./cosmicToplevel" && cosmicAppId !== undefined) {
+      return { getCosmicActiveAppId: async () => cosmicAppId };
+    }
+    if (request === "child_process" && (spawn || spawnSync)) {
+      return { ...childProcess, ...(spawn && { spawn }), ...(spawnSync && { spawnSync }) };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const LoadedClipboardManager = require("../../src/helpers/clipboard");
+    if (!realUinputAccess) {
+      // Dispatch tests mock the helper, so host permissions must not choose the path.
+      LoadedClipboardManager.prototype._canAccessUinput = () => true;
+    }
+    if (!realModifierWait) {
+      LoadedClipboardManager.prototype._awaitModifierRelease = async () => ({
+        state: "released",
+        waitedMs: 0,
+      });
+    }
+    return LoadedClipboardManager;
+  } finally {
+    Module._load = originalLoad;
+  }
+}
+
+const ClipboardManager = loadClipboardManager();
+const initialExitListeners = new Set(process.listeners("exit"));
+
+test.afterEach(() => {
+  for (const listener of process.listeners("exit")) {
+    if (!initialExitListeners.has(listener)) {
+      process.removeListener("exit", listener);
+    }
+  }
+});
+
+function createSuccessfulSpawn(calls) {
+  return function successfulSpawn(command, args = []) {
+    calls.push({ command, args });
+    const pasteProcess = new EventEmitter();
+    pasteProcess.stderr = new EventEmitter();
+    pasteProcess.stdout = new EventEmitter();
+    pasteProcess.stdin = { on() {}, end() {} };
+    process.nextTick(() => pasteProcess.emit("close", 0));
+    return pasteProcess;
+  };
+}
+
+function createSpawn(calls, exitCodes, { stdout = [] } = {}) {
+  return function mockedSpawn(command, args = []) {
+    calls.push({ command, args });
+    const pasteProcess = new EventEmitter();
+    pasteProcess.stderr = new EventEmitter();
+    pasteProcess.stdout = new EventEmitter();
+    pasteProcess.stdin = { on() {}, end() {} };
+    const code = exitCodes.shift() ?? 0;
+    const output = stdout.shift();
+    process.nextTick(() => {
+      if (output) pasteProcess.stdout.emit("data", output);
+      pasteProcess.emit("close", code);
+    });
+    return pasteProcess;
+  };
+}
+
+function createSpawnSync(calls) {
+  return function mockedSpawnSync(command, args = []) {
+    calls.push({ command, args });
+    return { status: 0, stdout: Buffer.from("") };
+  };
+}
+
+async function withWaylandEnvironment(desktop, callback) {
+  const previous = {
+    XDG_SESSION_TYPE: process.env.XDG_SESSION_TYPE,
+    XDG_CURRENT_DESKTOP: process.env.XDG_CURRENT_DESKTOP,
+    XDG_SESSION_DESKTOP: process.env.XDG_SESSION_DESKTOP,
+    DESKTOP_SESSION: process.env.DESKTOP_SESSION,
+    WAYLAND_DISPLAY: process.env.WAYLAND_DISPLAY,
+    HYPRLAND_INSTANCE_SIGNATURE: process.env.HYPRLAND_INSTANCE_SIGNATURE,
+    SWAYSOCK: process.env.SWAYSOCK,
+    DISPLAY: process.env.DISPLAY,
+  };
+  process.env.XDG_SESSION_TYPE = "wayland";
+  process.env.XDG_CURRENT_DESKTOP = desktop;
+  process.env.XDG_SESSION_DESKTOP = desktop;
+  process.env.DESKTOP_SESSION = desktop;
+  process.env.WAYLAND_DISPLAY = "wayland-1";
+  delete process.env.DISPLAY;
+  if (desktop === "Hyprland") process.env.HYPRLAND_INSTANCE_SIGNATURE = "test";
+  else delete process.env.HYPRLAND_INSTANCE_SIGNATURE;
+  delete process.env.SWAYSOCK;
+  try {
+    return await callback();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+function resetClipboard({
+  text = "",
+  html = "",
+  rtf = "",
+  image = null,
+  formats = ["text/plain"],
+} = {}) {
+  fakeClipboard.text = text;
+  fakeClipboard.html = html;
+  fakeClipboard.rtf = rtf;
+  fakeClipboard.image = image;
+  fakeClipboard.formats = formats;
+  fakeClipboard.buffers = {};
+  fakeClipboard.writes = [];
+}
+
+test("Wayland test environments isolate desktop metadata and restore it after a failure", async (t) => {
+  const previous = {
+    XDG_SESSION_DESKTOP: process.env.XDG_SESSION_DESKTOP,
+    DESKTOP_SESSION: process.env.DESKTOP_SESSION,
+    SWAYSOCK: process.env.SWAYSOCK,
+  };
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  process.env.XDG_SESSION_DESKTOP = "Hyprland";
+  process.env.DESKTOP_SESSION = "sway";
+  process.env.SWAYSOCK = "/tmp/stale-sway.sock";
+  const { getLinuxSessionInfo } = require("../../src/helpers/linuxSession");
+
+  await assert.rejects(
+    withWaylandEnvironment("COSMIC", async () => {
+      const session = getLinuxSessionInfo();
+      assert.equal(session.isCosmic, true);
+      assert.equal(session.isWlroots, false);
+      assert.equal(process.env.XDG_SESSION_DESKTOP, "COSMIC");
+      assert.equal(process.env.DESKTOP_SESSION, "COSMIC");
+      assert.equal(process.env.SWAYSOCK, undefined);
+      throw new Error("test callback failed");
+    }),
+    { message: "test callback failed" }
+  );
+
+  assert.equal(process.env.XDG_SESSION_DESKTOP, "Hyprland");
+  assert.equal(process.env.DESKTOP_SESSION, "sway");
+  assert.equal(process.env.SWAYSOCK, "/tmp/stale-sway.sock");
+});
+
+test("restore preserves rich clipboard formats atomically", () => {
+  resetClipboard({
+    formats: ["text/html", "text/rtf", "text/plain", "image/png"],
+    text: "plain before",
+    html: "<b>html before</b>",
+    rtf: "{\\rtf1 before}",
+    image: nonEmptyImage,
+  });
+  const manager = new ClipboardManager();
+
+  const snapshot = manager._saveClipboard();
+  fakeClipboard.writeText("dictated text");
+  manager._restoreClipboard(snapshot);
+
+  assert.deepEqual([...fakeClipboard.availableFormats()].sort(), [
+    "image/png",
+    "text/html",
+    "text/plain",
+    "text/rtf",
+  ]);
+  assert.equal(fakeClipboard.text, "plain before");
+  assert.equal(fakeClipboard.html, "<b>html before</b>");
+  assert.equal(fakeClipboard.rtf, "{\\rtf1 before}");
+  assert.equal(fakeClipboard.image, nonEmptyImage);
+  assert.equal(fakeClipboard.writes.at(-1)[0], "write");
+});
+
+test("restore runs when clipboard still contains the pasted text", async () => {
+  resetClipboard();
+  fakeClipboard.text = "dictated text";
+  const manager = new ClipboardManager();
+
+  await manager._restoreClipboardAfterDelay(
+    { type: "text", data: "previous clipboard" },
+    { delayMs: 0, expectedText: "dictated text" }
+  );
+
+  assert.equal(fakeClipboard.text, "previous clipboard");
+});
+
+test("restore is skipped when another clipboard write wins the race", async () => {
+  resetClipboard();
+  fakeClipboard.text = "user copied something else";
+  const manager = new ClipboardManager();
+
+  await manager._restoreClipboardAfterDelay(
+    { type: "text", data: "previous clipboard" },
+    { delayMs: 0, expectedText: "dictated text" }
+  );
+
+  assert.equal(fakeClipboard.text, "user copied something else");
+});
+
+// XWayland can't read a native Wayland app's clipboard while a Wayland window is
+// focused, and restoring that empty read wiped the user's clipboard (#2055).
+// wl-paste exits 1 for an empty or non-text clipboard, and a read killed by the
+// timeout (status null) may have written only part of the text.
+for (const { when, status, stdout, saved } of [
+  {
+    when: "wl-paste exits 0",
+    status: 0,
+    stdout: "copied in a Wayland app",
+    saved: "copied in a Wayland app",
+  },
+  { when: "wl-paste exits 1", status: 1, stdout: "", saved: "" },
+  { when: "wl-paste times out mid-read", status: null, stdout: "copied in a Way", saved: "" },
+]) {
+  test(`an unreadable Wayland clipboard is saved as "${saved}" when ${when}`, async (t) => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "linux" });
+    t.after(() => Object.defineProperty(process, "platform", platform));
+    resetClipboard({ formats: [] });
+    const spawnSyncCalls = [];
+    const Manager = loadClipboardManager({
+      spawnSync: (command, args) => {
+        spawnSyncCalls.push({ command, args });
+        return { status, stdout: Buffer.from(stdout) };
+      },
+    });
+    const manager = new Manager();
+    manager.commandExists = (command) => command === "wl-paste";
+
+    const snapshot = await withWaylandEnvironment("KDE", () => manager._saveClipboard());
+
+    assert.deepEqual(snapshot, { type: "text", data: saved });
+    assert.deepEqual(spawnSyncCalls, [
+      { command: "wl-paste", args: ["--no-newline", "--type", "text"] },
+    ]);
+  });
+}
+
+test("a clipboard XWayland can read is saved without asking wl-paste", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+  resetClipboard({ text: "readable over X11" });
+  const spawnSyncCalls = [];
+  const Manager = loadClipboardManager({
+    spawnSync: (command, args) => {
+      spawnSyncCalls.push({ command, args });
+      return { status: 0, stdout: Buffer.from("Wayland side") };
+    },
+  });
+  const manager = new Manager();
+  manager.commandExists = (command) => command === "wl-paste";
+
+  const snapshot = await withWaylandEnvironment("GNOME", () => manager._saveClipboard());
+
+  assert.deepEqual(snapshot, { type: "text", data: "readable over X11" });
+  assert.deepEqual(spawnSyncCalls, []);
+});
+
+// KWin can leave an older X11 owner in place after a Wayland app copies, so
+// the X11 clipboard can be older than the Wayland one the KDE restore writes. A current
+// X11 owner's text is what wl-paste reads, and an image has no plain text to read, even
+// with the html Chromium offers beside it.
+const WAYLAND_COPY = "copied in a Wayland app";
+const IMAGE_MARKUP = '<img src="https://example.com/a.png">';
+for (const { owner, x11, wayland, saved } of [
+  {
+    owner: "a stale X11 text owner",
+    x11: { text: "stale X11 text" },
+    wayland: { plain: WAYLAND_COPY },
+    saved: { type: "text", data: WAYLAND_COPY },
+  },
+  {
+    owner: "a stale X11 rich-text owner",
+    x11: { formats: ["text/html", "text/plain"], text: "stale X11 text", html: "<b>stale</b>" },
+    wayland: { plain: WAYLAND_COPY },
+    saved: { type: "text", data: WAYLAND_COPY },
+  },
+  {
+    owner: "a stale X11 image owner",
+    x11: { formats: ["image/png"], image: nonEmptyImage },
+    wayland: { plain: WAYLAND_COPY },
+    saved: { type: "text", data: WAYLAND_COPY },
+  },
+  {
+    owner: "a current rich-text owner",
+    x11: { formats: ["text/html", "text/plain"], text: "current", html: "<b>current</b>" },
+    wayland: { plain: "current" },
+    saved: { type: "formats", data: { text: "current", html: "<b>current</b>" } },
+  },
+  {
+    owner: "a current image owner",
+    x11: { formats: ["image/png"], image: nonEmptyImage },
+    wayland: {},
+    saved: { type: "image", data: nonEmptyImage },
+  },
+  {
+    owner: "a Chromium copied image",
+    x11: { formats: ["image/png", "text/html"], html: IMAGE_MARKUP, image: nonEmptyImage },
+    wayland: { html: IMAGE_MARKUP },
+    saved: { type: "formats", data: { html: IMAGE_MARKUP, image: nonEmptyImage } },
+  },
+]) {
+  test(`a KDE clipboard held by ${owner} is saved as ${saved.type}`, async (t) => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "linux" });
+    t.after(() => Object.defineProperty(process, "platform", platform));
+    resetClipboard(x11);
+    // `--type text` falls back to any text type; an exact type matches only itself.
+    const Manager = loadClipboardManager({
+      spawnSync: (command, args) => {
+        const text = args.at(-1) === "text" ? (wayland.plain ?? wayland.html) : wayland.plain;
+        return { status: text === undefined ? 1 : 0, stdout: Buffer.from(text ?? "") };
+      },
+    });
+    const manager = new Manager();
+    manager.commandExists = (command) => command === "wl-paste";
+
+    const snapshot = await withWaylandEnvironment("KDE", () => manager._saveClipboard());
+
+    assert.deepEqual(snapshot, saved);
+  });
+}
+
+// A rich or image restore writes X11 only, so on KWin before 6.0.3 the text the app put on
+// Wayland stays there, and the next KDE save would take it for a newer copy.
+const RICH_COPY = { formats: ["text/html", "text/plain"], text: "user copy", html: "<b>user</b>" };
+for (const { original, x11, when, writeAppText } of [
+  {
+    original: "rich",
+    x11: RICH_COPY,
+    when: "a dictation",
+    writeAppText: (manager) => manager._writeClipboardWayland("dictated text"),
+  },
+  {
+    original: "rich",
+    x11: RICH_COPY,
+    when: "a selection capture",
+    writeAppText: (manager) => manager._writeClipboardTextAll("__OPENWHISPR_SELECTION_test__"),
+  },
+  {
+    original: "image",
+    x11: { formats: ["image/png"], image: nonEmptyImage },
+    when: "a dictation",
+    writeAppText: (manager) => manager._writeClipboardWayland("dictated text"),
+  },
+]) {
+  test(`a KDE ${original} clipboard restored after ${when} is saved again unchanged`, async (t) => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "linux" });
+    t.after(() => Object.defineProperty(process, "platform", platform));
+    resetClipboard(x11);
+    let waylandText = x11.text ?? null;
+    const Manager = loadClipboardManager({
+      spawnSync: (command, args) => {
+        if (command === "wl-copy" && !args.includes("--primary")) waylandText = args.at(-1);
+        return waylandText === null
+          ? { status: 1, stdout: Buffer.from("") }
+          : { status: 0, stdout: Buffer.from(waylandText) };
+      },
+    });
+    const manager = new Manager();
+    manager.commandExists = (command) => command === "wl-copy" || command === "wl-paste";
+
+    await withWaylandEnvironment("KDE", () => {
+      const saved = manager._saveClipboard();
+      writeAppText(manager);
+      manager._restoreClipboard(saved);
+
+      assert.deepEqual(manager._saveClipboard(), saved);
+    });
+  });
+}
+
+test("a rich or image restore off KDE writes X11 only", async () => {
+  const spawnSyncCalls = [];
+  const Manager = loadClipboardManager({ spawnSync: createSpawnSync(spawnSyncCalls) });
+  const manager = new Manager();
+  manager.commandExists = (command) => command === "wl-copy";
+  resetClipboard();
+
+  await withWaylandEnvironment("GNOME", () => {
+    manager._restoreClipboard({ type: "formats", data: RICH_COPY });
+    manager._restoreClipboard({ type: "image", data: nonEmptyImage });
+  });
+
+  assert.deepEqual(spawnSyncCalls, []);
+});
+
+test("an empty clipboard on X11 is saved without asking wl-paste", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  const { XDG_SESSION_TYPE, WAYLAND_DISPLAY } = process.env;
+  process.env.XDG_SESSION_TYPE = "x11";
+  delete process.env.WAYLAND_DISPLAY;
+  t.after(() => {
+    Object.defineProperty(process, "platform", platform);
+    if (XDG_SESSION_TYPE === undefined) delete process.env.XDG_SESSION_TYPE;
+    else process.env.XDG_SESSION_TYPE = XDG_SESSION_TYPE;
+    if (WAYLAND_DISPLAY !== undefined) process.env.WAYLAND_DISPLAY = WAYLAND_DISPLAY;
+  });
+  resetClipboard({ formats: [] });
+  const spawnSyncCalls = [];
+  const Manager = loadClipboardManager({
+    spawnSync: (command, args) => {
+      spawnSyncCalls.push({ command, args });
+      return { status: 0, stdout: Buffer.from("Wayland side") };
+    },
+  });
+  const manager = new Manager();
+  manager.commandExists = (command) => command === "wl-paste";
+
+  assert.deepEqual(manager._saveClipboard(), { type: "text", data: "" });
+  assert.deepEqual(spawnSyncCalls, []);
+});
+
+test("pasteText waits for prior clipboard restoration before starting the next paste", async () => {
+  const manager = new ClipboardManager();
+  const events = [];
+  let releaseFirstRestore;
+
+  manager._pasteText = async (text) => {
+    events.push(`start:${text}`);
+    events.push(`end:${text}`);
+    if (text === "first") {
+      return {
+        restoreComplete: new Promise((resolve) => {
+          releaseFirstRestore = resolve;
+        }),
+      };
+    }
+    return { restoreComplete: Promise.resolve() };
+  };
+
+  await manager.pasteText("first");
+  const secondPaste = manager.pasteText("second");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(events, ["start:first", "end:first"]);
+
+  releaseFirstRestore();
+  await secondPaste;
+  assert.deepEqual(events, ["start:first", "end:first", "start:second", "end:second"]);
+});
+
+test("pasteWithFastPaste passes --restore-window <hwnd> when targetWindow is set (#859)", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager._restoreClipboardAfterDelay = () => Promise.resolve();
+
+  const result = await manager.pasteWithFastPaste(
+    "/tmp/windows-fast-paste.exe",
+    { type: "text", data: "previous clipboard" },
+    // Hex id: the binary prints "TARGET %p" (hex) from --detect-only and parses
+    // --restore-window with strtoull base 16, so the handle stays hex end to end.
+    { expectedClipboardText: "dictated text", targetWindow: "1A2B3C" }
+  );
+  await result.restoreComplete;
+
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].command, "/tmp/windows-fast-paste.exe");
+  assert.deepEqual(spawnCalls[0].args, ["--restore-window", "1A2B3C"]);
+});
+
+test("pasteWithFastPaste sends no args when nothing was captured", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager._restoreClipboardAfterDelay = () => Promise.resolve();
+
+  const result = await manager.pasteWithFastPaste(
+    "/tmp/windows-fast-paste.exe",
+    { type: "text", data: "previous clipboard" },
+    { expectedClipboardText: "dictated text" }
+  );
+  await result.restoreComplete;
+
+  assert.equal(spawnCalls.length, 1);
+  assert.deepEqual(spawnCalls[0].args, []);
+});
+
+test("Hyprland paste uses the current symbolic shortcut dispatcher", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0], { stdout: ["ok\n"] }),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "hyprctl";
+  manager.resolveLinuxFastPasteBinary = () => null;
+  manager._detectHyprlandWindowClass = () => "kitty";
+
+  await withWaylandEnvironment("Hyprland", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    {
+      command: "hyprctl",
+      args: [
+        "dispatch",
+        'hl.dsp.send_shortcut({ mods = "CTRL SHIFT", key = "V", window = "activewindow" })',
+      ],
+    },
+  ]);
+});
+
+test("Hyprland paste falls back to the legacy symbolic shortcut dispatcher", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0, 0], {
+      stdout: ["invalid dispatcher\n", "ok\n"],
+    }),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "hyprctl";
+  manager.resolveLinuxFastPasteBinary = () => null;
+  manager._detectHyprlandWindowClass = () => null;
+
+  await withWaylandEnvironment("Hyprland", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    {
+      command: "hyprctl",
+      args: [
+        "dispatch",
+        'hl.dsp.send_shortcut({ mods = "SHIFT", key = "Insert", window = "activewindow" })',
+      ],
+    },
+    { command: "hyprctl", args: ["dispatch", "sendshortcut", "SHIFT, Insert, activewindow"] },
+  ]);
+});
+
+test("Hyprland prefers wtype over sendshortcut when installed", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "hyprctl" || command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => null;
+  manager._detectHyprlandWindowClass = () => null;
+
+  await withWaylandEnvironment("Hyprland", () => manager.pasteLinux(null));
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.command),
+    ["wtype"]
+  );
+});
+
+for (const windowClass of ["org.omarchy.agent", "org.omarchy.btop", "TUI.float"]) {
+  test(`Hyprland pastes text with Shift+Insert into ${windowClass}`, async () => {
+    const spawnCalls = [];
+    const Manager = loadClipboardManager({ spawn: createSpawn(spawnCalls, [0]) });
+    const manager = new Manager();
+    manager.commandExists = (command) => command === "hyprctl" || command === "wtype";
+    manager.resolveLinuxFastPasteBinary = () => null;
+    manager._detectHyprlandWindowClass = () => windowClass;
+
+    await withWaylandEnvironment("Hyprland", () => manager.pasteLinux(null));
+
+    assert.deepEqual(spawnCalls, [
+      { command: "wtype", args: ["-M", "shift", "-k", "Insert", "-m", "shift"] },
+    ]);
+  });
+}
+
+test("Hyprland keeps the Omarchy text paste shortcut when wtype fails", async () => {
+  const spawnCalls = [];
+  const Manager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0], { stdout: ["", "ok\n"] }),
+  });
+  const manager = new Manager();
+  manager.commandExists = (command) => command === "hyprctl" || command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => null;
+  manager._detectHyprlandWindowClass = () => "org.omarchy.agent";
+
+  await withWaylandEnvironment("Hyprland", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls[1], {
+    command: "hyprctl",
+    args: [
+      "dispatch",
+      'hl.dsp.send_shortcut({ mods = "SHIFT", key = "Insert", window = "activewindow" })',
+    ],
+  });
+});
+
+test("failed wtype on Hyprland continues to sendshortcut", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0], { stdout: ["", "ok\n"] }),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "hyprctl" || command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => null;
+  manager._detectHyprlandWindowClass = () => null;
+
+  await withWaylandEnvironment("Hyprland", () => manager.pasteLinux(null));
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.command),
+    ["wtype", "hyprctl"]
+  );
+});
+
+test("wlroots tries wtype before native uinput", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+  await withWaylandEnvironment("Sway", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    { command: "wtype", args: ["-M", "shift", "-k", "Insert", "-m", "shift"] },
+  ]);
+});
+
+test("failed wtype continues to native Shift+Insert uinput", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+  await withWaylandEnvironment("Sway", () => manager.pasteLinux(null));
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.command),
+    ["wtype", "/tmp/linux-fast-paste"]
+  );
+  assert.deepEqual(spawnCalls[1].args, ["--uinput", "--shift-insert"]);
+});
+
+// Warp binds paste to Ctrl+Shift+V only, and COSMIC's own app ids must not read as the
+// "st" terminal ("system76").
+for (const [appId, expected] of [
+  [
+    "dev.warp.warp",
+    {
+      command: "wtype",
+      args: ["-M", "ctrl", "-M", "shift", "-k", "v", "-m", "shift", "-m", "ctrl"],
+    },
+  ],
+  [
+    "com.system76.cosmicedit",
+    { command: "/tmp/linux-fast-paste", args: ["--uinput", "--shift-insert"] },
+  ],
+  [null, { command: "/tmp/linux-fast-paste", args: ["--uinput", "--shift-insert"] }],
+]) {
+  test(`COSMIC pastes into ${appId ?? "an undetected window"} with ${expected.command}`, async () => {
+    const spawnCalls = [];
+    const TestClipboardManager = loadClipboardManager({
+      spawn: createSuccessfulSpawn(spawnCalls),
+      cosmicAppId: appId,
+    });
+    const manager = new TestClipboardManager();
+    manager.commandExists = (command) => command === "wtype";
+    manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+    await withWaylandEnvironment("COSMIC", () => manager.pasteLinux(null));
+
+    assert.deepEqual(spawnCalls, [expected]);
+  });
+}
+
+// COSMIC's XWayland keeps naming the last X11 window while a native Wayland window has
+// focus, and COSMIC gives no PID to spot an Electron app hosting a TUI.
+test("COSMIC ignores xdotool and keeps Shift+Insert for a window that is not a terminal", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0]),
+    spawnSync: () => ({ status: 0, stdout: Buffer.from("4194322\n") }),
+    cosmicAppId: "code",
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "xdotool";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+  await withWaylandEnvironment("COSMIC", async () => {
+    process.env.DISPLAY = ":0";
+    await manager.pasteLinux(null);
+  });
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args),
+    [["--uinput", "--shift-insert"], ["--shift-insert"]]
+  );
+});
+
+// On COSMIC wtype only pastes into terminals, so it is reported for the guidance
+// without becoming the paste method.
+test("COSMIC reports wtype without making it the paste method", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+  const TestClipboardManager = loadClipboardManager();
+  const manager = new TestClipboardManager();
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._canAccessUinput = () => true;
+
+  for (const hasWtype of [true, false]) {
+    manager.commandExists = (command) => hasWtype && command === "wtype";
+    const status = await withWaylandEnvironment("COSMIC", () => manager.checkPasteTools());
+    assert.equal(status.isCosmic, true);
+    assert.equal(status.hasWtype, hasWtype);
+    assert.equal(status.method, "uinput");
+    assert.deepEqual(status.tools, []);
+  }
+});
+
+test("GNOME tries uinput before a tokenless portal", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+
+  await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    { command: "/tmp/linux-fast-paste", args: ["--uinput", "--shift-insert"] },
+  ]);
+});
+
+test("GNOME skips inaccessible uinput and falls back to the portal", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+  manager._canAccessUinput = () => false;
+
+  const result = await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.equal(result.method, "portal");
+  assert.deepEqual(spawnCalls, [
+    { command: "/tmp/linux-fast-paste", args: ["--portal", "--shift-insert"] },
+  ]);
+});
+
+test("uinput dispatch rechecks permissions instead of trusting cached access", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+  let writable = false;
+  const access = t.mock.method(fs, "accessSync", (file, mode) => {
+    assert.equal(file, "/dev/uinput");
+    assert.equal(mode, fs.constants.W_OK);
+    if (!writable) throw new Error("EACCES");
+  });
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+    realUinputAccess: true,
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+
+  assert.equal(manager._canAccessUinput(), false);
+  writable = true;
+  const granted = await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+  assert.equal(granted.method, "uinput");
+  assert.equal(manager._canAccessUinput(), true);
+
+  writable = false;
+  const revoked = await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+  assert.equal(revoked.method, "portal");
+  assert.equal(manager._canAccessUinput(), false);
+  assert.equal(access.mock.callCount(), 3);
+  assert.deepEqual(spawnCalls, [
+    { command: "/tmp/linux-fast-paste", args: ["--uinput", "--shift-insert"] },
+    { command: "/tmp/linux-fast-paste", args: ["--portal", "--shift-insert"] },
+  ]);
+});
+
+test("uinput logs dispatch without claiming the target received the paste", async (t) => {
+  const debugLogger = require("../../src/helpers/debugLogger");
+  const info = t.mock.method(debugLogger, "info", () => {});
+  const TestClipboardManager = loadClipboardManager({ spawn: createSuccessfulSpawn([]) });
+  const manager = new TestClipboardManager();
+  const log = t.mock.method(manager, "safeLog", () => {});
+  // Unrelated diagnostics must not make this wording check fail.
+  debugLogger.info("Unrelated diagnostic", { method: "other" }, "clipboard");
+  manager.safeLog("✅ Paste successful using another tool");
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+
+  const result = await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.equal(result.method, "uinput");
+  const uinputEvents = info.mock.calls.filter((call) => call.arguments[1]?.method === "uinput");
+  assert.ok(uinputEvents.some((call) => call.arguments[0] === "Paste injection dispatched"));
+  assert.ok(uinputEvents.every((call) => !call.arguments[0].includes("Paste successful")));
+  const uinputMessages = log.mock.calls
+    .map((call) => call.arguments[0])
+    .filter((message) => message.includes("linux-fast-paste (uinput)"));
+  assert.ok(uinputMessages.some((message) => message.includes("injection dispatched")));
+  assert.ok(uinputMessages.every((message) => !message.includes("Paste successful")));
+});
+
+test("GNOME falls back to a tokenless portal after uinput fails", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+
+  await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    { command: "/tmp/linux-fast-paste", args: ["--uinput", "--shift-insert"] },
+    { command: "/tmp/linux-fast-paste", args: ["--portal", "--shift-insert"] },
+  ]);
+});
+
+test("GNOME uses a saved portal token before uinput", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0], { stdout: ["rotated-token\n"] }),
+  });
+  const manager = new TestClipboardManager();
+  const savedTokens = [];
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => "restore-token";
+  manager._savePortalToken = (token) => savedTokens.push(token);
+
+  await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    {
+      command: "/tmp/linux-fast-paste",
+      args: ["--portal", "--shift-insert", "--restore-token", "restore-token"],
+    },
+  ]);
+  assert.deepEqual(savedTokens, ["rotated-token"]);
+});
+
+test("GNOME stops preferring a saved portal token after it fails", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0, 0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => "restore-token";
+
+  await withWaylandEnvironment("GNOME", async () => {
+    await manager.pasteLinux(null);
+    await manager.pasteLinux(null);
+  });
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args),
+    [
+      ["--portal", "--shift-insert", "--restore-token", "restore-token"],
+      ["--uinput", "--shift-insert"],
+      ["--uinput", "--shift-insert"],
+    ]
+  );
+});
+
+test("GNOME pastes through a running ydotoold before the ephemeral uinput device", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "ydotool";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+  manager._isYdotoolDaemonRunning = () => true;
+  manager._isYdotoolLegacy = () => false;
+  manager._canAccessUinput = () => false;
+
+  const result = await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.equal(result.method, "ydotool");
+  assert.deepEqual(spawnCalls, [
+    { command: "ydotool", args: ["key", "42:1", "110:1", "110:0", "42:0"] },
+  ]);
+});
+
+test("GNOME keeps a saved portal token ahead of ydotoold", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "ydotool";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => "restore-token";
+  manager._isYdotoolDaemonRunning = () => true;
+  manager._isYdotoolLegacy = () => false;
+
+  await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    {
+      command: "/tmp/linux-fast-paste",
+      args: ["--portal", "--shift-insert", "--restore-token", "restore-token"],
+    },
+  ]);
+});
+
+test("GNOME falls back to the ephemeral uinput device when ydotool fails", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "ydotool";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+  manager._isYdotoolDaemonRunning = () => true;
+  manager._isYdotoolLegacy = () => false;
+
+  const result = await withWaylandEnvironment("GNOME", () => manager.pasteLinux(null));
+
+  assert.equal(result.method, "uinput");
+  assert.deepEqual(spawnCalls, [
+    { command: "ydotool", args: ["key", "42:1", "110:1", "110:0", "42:0"] },
+    { command: "/tmp/linux-fast-paste", args: ["--uinput", "--shift-insert"] },
+  ]);
+});
+
+test("GNOME does not retry a failed ydotool after the native paths also fail", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 1, 1]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "ydotool";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+  manager._isYdotoolDaemonRunning = () => true;
+  manager._isYdotoolLegacy = () => false;
+
+  await assert.rejects(
+    withWaylandEnvironment("GNOME", () => manager.pasteLinux(null)),
+    { code: "PASTE_SIMULATION_FAILED" }
+  );
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args),
+    [
+      ["key", "42:1", "110:1", "110:0", "42:0"],
+      ["--uinput", "--shift-insert"],
+      ["--portal", "--shift-insert"],
+    ]
+  );
+});
+
+test("KDE tries portal before uinput", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+
+  await withWaylandEnvironment("KDE", () => manager.pasteLinux(null));
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args),
+    [
+      ["--portal", "--shift-insert"],
+      ["--uinput", "--shift-insert"],
+    ]
+  );
+});
+
+// On a non-Latin layout KWin can't map XK_v, so the Ctrl+V (or Ctrl+Shift+V) a
+// detected window would get reaches it as Ctrl alone (#2055).
+for (const windowClass of ["chromium", "kitty"]) {
+  test(`KDE portal sends Shift+Insert to a detected ${windowClass} window`, async () => {
+    const spawnCalls = [];
+    const TestClipboardManager = loadClipboardManager({
+      spawn: createSpawn(spawnCalls, [0]),
+    });
+    const manager = new TestClipboardManager();
+    manager.commandExists = () => false;
+    manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+    manager._readPortalToken = () => null;
+    manager._detectKdeWindowClass = () => windowClass;
+
+    await withWaylandEnvironment("KDE", () => manager.pasteLinux(null));
+
+    assert.deepEqual(
+      spawnCalls.map((call) => call.args),
+      [["--portal", "--shift-insert"]]
+    );
+  });
+}
+
+// Warp binds paste to Ctrl+Shift+V only, so it keeps that chord on KDE.
+test("KDE portal sends Ctrl+Shift+V to a detected Warp window", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => null;
+  manager._detectKdeWindowClass = () => "dev.warp.warp";
+
+  await withWaylandEnvironment("KDE", () => manager.pasteLinux(null));
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args),
+    [["--portal", "--terminal"]]
+  );
+});
+
+// The Shift+Insert switch for #2055 is KWin-specific: a detected GNOME window
+// keeps Ctrl+V through the portal.
+test("GNOME portal sends Ctrl+V to a detected window", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0]),
+    spawnSync: (command, args) => {
+      if (command === "xdotool" && args.includes("getwindowclassname")) {
+        return { status: 0, stdout: Buffer.from("firefox\n") };
+      }
+      if (command === "xdotool" && args.length === 1) {
+        return { status: 0, stdout: Buffer.from("42\n") };
+      }
+      return { status: 1, stdout: Buffer.from("") };
+    },
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "xdotool";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => "restore-token";
+  manager._savePortalToken = () => {};
+
+  await withWaylandEnvironment("GNOME", () => {
+    process.env.DISPLAY = ":0";
+    return manager.pasteLinux(null);
+  });
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args),
+    [["--portal", "--restore-token", "restore-token"]]
+  );
+});
+
+test("portal exit zero succeeds with or without a restore token", async () => {
+  const calls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(calls, [0, 0], { stdout: ["", "rotated-token\n"] }),
+  });
+  const manager = new TestClipboardManager();
+  const saved = [];
+  const restoreTokens = [null, "restore-token"];
+  manager._readPortalToken = () => restoreTokens.shift();
+  manager._savePortalToken = (token) => saved.push(token);
+
+  assert.equal(await manager._runPortalPaste("/tmp/linux-fast-paste"), null);
+  assert.equal(await manager._runPortalPaste("/tmp/linux-fast-paste"), "rotated-token");
+  assert.deepEqual(
+    calls.map((call) => call.args),
+    [["--portal"], ["--portal", "--restore-token", "restore-token"]]
+  );
+  assert.deepEqual(saved, ["rotated-token"]);
+});
+
+test("portal symbolic input failure is suppressed for the process", async () => {
+  const manager = new ClipboardManager();
+  const attempts = [];
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => "restore-token";
+  manager._runPortalPaste = async () => {
+    attempts.push("portal");
+    throw new Error("portal symbolic keyboard input unavailable");
+  };
+  manager._runLinuxPasteCommand = async () => attempts.push("uinput");
+
+  await withWaylandEnvironment("GNOME", async () => {
+    await manager.pasteLinux(null);
+    await manager.pasteLinux(null);
+  });
+
+  assert.deepEqual(attempts, ["portal", "uinput", "uinput"]);
+});
+
+test("portal denial is attempted once per process", async () => {
+  const manager = new ClipboardManager();
+  const attempts = [];
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._readPortalToken = () => "restore-token";
+  manager._runPortalPaste = async () => {
+    attempts.push("portal");
+    throw new Error("portal-denied");
+  };
+  manager._runLinuxPasteCommand = async () => attempts.push("uinput");
+
+  await withWaylandEnvironment("GNOME", async () => {
+    await manager.pasteLinux(null);
+    await manager.pasteLinux(null);
+  });
+
+  assert.deepEqual(attempts, ["portal", "uinput", "uinput"]);
+});
+
+test("portal exit six reports unavailable symbolic input", async () => {
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn([], [6]),
+  });
+  const manager = new TestClipboardManager();
+
+  await assert.rejects(
+    manager._runPortalPaste("/tmp/linux-fast-paste"),
+    /portal symbolic keyboard input unavailable/
+  );
+});
+
+test("Wayland ydotool uses raw Shift+Insert keycodes", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "ydotool";
+  manager._isYdotoolDaemonRunning = () => true;
+  manager._isYdotoolLegacy = () => false;
+  manager.resolveLinuxFastPasteBinary = () => null;
+
+  await withWaylandEnvironment("Unknown", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [
+    { command: "ydotool", args: ["key", "42:1", "110:1", "110:0", "42:0"] },
+  ]);
+});
+
+test("successful Wayland dispatch starts clipboard restoration", async () => {
+  const manager = new ClipboardManager();
+  let restoreCalled = false;
+  manager.commandExists = (command) => command === "hyprctl";
+  manager.resolveLinuxFastPasteBinary = () => null;
+  manager._detectHyprlandWindowClass = () => null;
+  manager._runLinuxPasteCommand = async () => {};
+  manager._restoreClipboardAfterDelay = () => {
+    restoreCalled = true;
+    return Promise.resolve();
+  };
+
+  const result = await withWaylandEnvironment("Hyprland", () =>
+    manager.pasteLinux({ type: "text", data: "previous" }, { expectedClipboardText: "dictated" })
+  );
+  await result.restoreComplete;
+
+  assert.equal(restoreCalled, true);
+});
+
+test("XWayland fallback remains reachable after native Wayland failure", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [1, 0]),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = () => false;
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+  await withWaylandEnvironment("Unknown", async () => {
+    process.env.DISPLAY = ":0";
+    await manager.pasteLinux(null);
+  });
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args),
+    [["--uinput", "--shift-insert"], ["--shift-insert"]]
+  );
+});
+
+const MODIFIER_WAIT_CALL = {
+  command: "/tmp/linux-fast-paste",
+  args: ["--capabilities", "--await-modifier-release", "1500"],
+};
+
+// A chord injected into still-held modifiers reaches the target as a different
+// shortcut (#2113), so every paste tool — not only the fast-paste binary — waits.
+for (const [desktop, commandExists, injector] of [
+  ["Sway", (command) => command === "wtype", "wtype"],
+  ["GNOME", () => false, "/tmp/linux-fast-paste"],
+]) {
+  test(`${desktop} waits for held modifiers before ${injector} injects the paste`, async () => {
+    const spawnCalls = [];
+    const TestClipboardManager = loadClipboardManager({
+      spawn: createSpawn(spawnCalls, [0, 0], { stdout: ["MODIFIERS released 120\n"] }),
+      realModifierWait: true,
+    });
+    const manager = new TestClipboardManager();
+    manager.commandExists = commandExists;
+    manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+    manager._readPortalToken = () => null;
+
+    const result = await withWaylandEnvironment(desktop, () => manager.pasteLinux(null));
+
+    assert.deepEqual(spawnCalls[0], MODIFIER_WAIT_CALL);
+    assert.deepEqual(
+      spawnCalls.slice(1).map((call) => call.command),
+      [injector]
+    );
+    assert.notEqual(result.pasted, false);
+  });
+}
+
+test("modifiers still held leave the text on the clipboard without injecting", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0], { stdout: ["MODIFIERS held 1500\n"] }),
+    realModifierWait: true,
+  });
+  const manager = new TestClipboardManager();
+  let restoreScheduled = false;
+  manager.commandExists = (command) => command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._restoreClipboardAfterDelay = async () => {
+    restoreScheduled = true;
+  };
+
+  const result = await withWaylandEnvironment("Sway", () =>
+    manager.pasteLinux({ type: "text", data: "previous clipboard" })
+  );
+
+  assert.deepEqual(spawnCalls, [MODIFIER_WAIT_CALL]);
+  assert.equal(result.pasted, false);
+  assert.equal(result.reason, "modifiers-held");
+  assert.equal(restoreScheduled, false, "the transcript stays on the clipboard");
+});
+
+// Stands in for `command -v` (only `installed` commands exist, and succeed) and for
+// wl-copy, whose status null is a write killed by its timeout.
+function linuxClipboardToolsSpawnSync(
+  installed,
+  { wlCopyStatus = 0, primaryStatus = wlCopyStatus } = {}
+) {
+  return (command, args = []) => {
+    if (command === "sh") {
+      return { status: installed.has(args[1].replace("command -v ", "")) ? 0 : 1 };
+    }
+    if (command === "wl-copy") {
+      return { status: args[0] === "--primary" ? primaryStatus : wlCopyStatus };
+    }
+    return { status: installed.has(command) ? 0 : 1, stdout: Buffer.from("") };
+  };
+}
+
+function loadLinuxPasteManager(t, spawnCalls, spawnSync) {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0, 0], { stdout: ["MODIFIERS released 0\n"] }),
+    spawnSync,
+    realModifierWait: true,
+  });
+  const manager = new TestClipboardManager();
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._restoreClipboardAfterDelay = async () => {};
+  return manager;
+}
+
+// These compositors hand an X11 clipboard write to Wayland apps only while an X11
+// window has focus (#2621): with no Wayland clipboard written, every chord would
+// paste the clipboard from before the dictation.
+for (const [label, desktop, installed, statuses, reason] of [
+  ["niri without wl-copy", "niri", [], {}, "wl-copy-missing"],
+  ["Sway without wl-copy", "Sway", ["wtype"], {}, "wl-copy-missing"],
+  ["Hyprland without wl-copy", "Hyprland", ["hyprctl"], {}, "wl-copy-missing"],
+  ["niri with a timed-out wl-copy", "niri", ["wl-copy"], { wlCopyStatus: null }, "wl-copy-failed"],
+  // Apps paste the clipboard, so a written primary selection alone isn't enough.
+  [
+    "niri with a timed-out clipboard write",
+    "niri",
+    ["wl-copy"],
+    { wlCopyStatus: null, primaryStatus: 0 },
+    "wl-copy-failed",
+  ],
+  // Terminals paste the primary selection on Shift+Insert.
+  [
+    "niri with a timed-out primary write",
+    "niri",
+    ["wl-copy"],
+    { primaryStatus: null },
+    "wl-copy-failed",
+  ],
+  // xclip reaches only XWayland's primary selection.
+  [
+    "niri with a timed-out primary write and xclip",
+    "niri",
+    ["wl-copy", "xclip"],
+    { primaryStatus: null },
+    "wl-copy-failed",
+  ],
+]) {
+  test(`${label} injects nothing and says why`, async (t) => {
+    const spawnCalls = [];
+    const manager = loadLinuxPasteManager(
+      t,
+      spawnCalls,
+      linuxClipboardToolsSpawnSync(new Set(installed), statuses)
+    );
+    resetClipboard({ text: "previous" });
+
+    const result = await withWaylandEnvironment(desktop, () => manager._pasteText("transcript"));
+
+    assert.equal(result.pasted, false);
+    assert.equal(result.reason, reason);
+    assert.deepEqual(spawnCalls, [], "no modifier wait and no chord");
+    assert.equal(fakeClipboard.text, "transcript", "the text stays on the clipboard");
+  });
+}
+
+test("niri pastes once wl-copy wrote the Wayland clipboard", async (t) => {
+  const spawnCalls = [];
+  const manager = loadLinuxPasteManager(
+    t,
+    spawnCalls,
+    linuxClipboardToolsSpawnSync(new Set(["wl-copy"]))
+  );
+
+  const result = await withWaylandEnvironment("niri", () => manager._pasteText("transcript"));
+
+  assert.notEqual(result.pasted, false);
+  assert.deepEqual(spawnCalls, [
+    MODIFIER_WAIT_CALL,
+    { command: "/tmp/linux-fast-paste", args: ["--uinput", "--shift-insert"] },
+  ]);
+});
+
+// Linux refuses an argument of 128 KiB or more, which would hold back every Retry too.
+test("wl-copy takes text too long for an argument on stdin", async (t) => {
+  const wlCopyCalls = [];
+  const spawnSync = linuxClipboardToolsSpawnSync(new Set(["wl-copy"]));
+  const manager = loadLinuxPasteManager(t, [], (command, args = [], options = {}) => {
+    if (command === "wl-copy") wlCopyCalls.push({ args, input: options.input });
+    return spawnSync(command, args);
+  });
+  const longText = "x".repeat(128 * 1024);
+
+  await withWaylandEnvironment("niri", async () => {
+    await manager._pasteText("short");
+    await manager._pasteText(longText);
+  });
+
+  assert.deepEqual(wlCopyCalls, [
+    { args: ["--", "short"], input: undefined },
+    { args: ["--primary", "--", "short"], input: undefined },
+    { args: ["--type", "text/plain"], input: longText },
+    { args: ["--primary", "--type", "text/plain"], input: longText },
+  ]);
+});
+
+// A write killed early holds the paste back where wl-copy is required, and 50 ms is
+// shorter than a loaded system's round trip to the compositor.
+test("both wl-copy writes get 200 ms", async (t) => {
+  const timeouts = [];
+  const spawnSync = linuxClipboardToolsSpawnSync(new Set(["wl-copy"]));
+  const manager = loadLinuxPasteManager(t, [], (command, args = [], options = {}) => {
+    if (command === "wl-copy") timeouts.push(options.timeout);
+    return spawnSync(command, args);
+  });
+
+  await withWaylandEnvironment("niri", () => manager._pasteText("transcript"));
+
+  assert.deepEqual(timeouts, [200, 200]);
+});
+
+// The command cache keeps an answer for 30 s; a wl-copy installed after a held-back
+// paste must count for the next paste and the card's Re-check at once.
+test("a wl-copy installed after a held-back paste counts at once", async (t) => {
+  const spawnCalls = [];
+  const installed = new Set();
+  const manager = loadLinuxPasteManager(t, spawnCalls, linuxClipboardToolsSpawnSync(installed));
+  manager._canAccessUinput = () => true;
+
+  await withWaylandEnvironment("niri", async () => {
+    assert.equal((await manager._pasteText("first")).reason, "wl-copy-missing");
+    assert.equal(manager.checkPasteTools().wlCopyMissing, true);
+
+    installed.add("wl-copy");
+
+    assert.equal(manager.checkPasteTools().wlCopyMissing, false);
+    assert.notEqual((await manager._pasteText("second")).pasted, false);
+  });
+  assert.deepEqual(
+    spawnCalls.map((call) => call.args[0]),
+    ["--capabilities", "--uinput"],
+    "only the second paste waits and injects"
+  );
+});
+
+// Elsewhere (GNOME, COSMIC) wl-copy is optional, so its absence stays cached.
+test("a missing wl-copy stays cached where it is optional", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+  const probes = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawnSync: (command, args = []) => {
+      if (command === "sh") probes.push(args[1]);
+      return { status: 1, stdout: Buffer.from("") };
+    },
+  });
+  const manager = new TestClipboardManager();
+
+  await withWaylandEnvironment("GNOME", () => {
+    manager._writeClipboardWayland("first");
+    manager._writeClipboardWayland("second");
+  });
+  assert.equal(probes.filter((probe) => probe === "command -v wl-copy").length, 1);
+});
+
+test("a clipboard copy says when only XWayland apps can read it", async (t) => {
+  for (const [desktop, installed, statuses, xwaylandOnly] of [
+    ["niri", [], {}, true],
+    ["niri", ["wl-copy"], { wlCopyStatus: null }, true],
+    ["niri", ["wl-copy"], {}, false],
+    ["Sway", [], {}, true],
+    ["GNOME", [], {}, false],
+    ["KDE", [], {}, false],
+  ]) {
+    const manager = loadLinuxPasteManager(
+      t,
+      [],
+      linuxClipboardToolsSpawnSync(new Set(installed), statuses)
+    );
+
+    const result = await withWaylandEnvironment(desktop, () => manager.writeClipboard("answer"));
+
+    assert.deepEqual(result, { success: true, xwaylandOnly }, `${desktop}, ${installed}`);
+  }
+});
+
+test("the paste tools report a missing wl-copy only where it is required", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+  const TestClipboardManager = loadClipboardManager();
+  const manager = new TestClipboardManager();
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._canAccessUinput = () => true;
+
+  for (const [desktop, hasWlCopy, wlCopyMissing] of [
+    ["niri", false, true],
+    ["niri", true, false],
+    ["Sway", false, true],
+    ["GNOME", false, false],
+    ["KDE", false, false],
+  ]) {
+    manager.commandExists = (command) => hasWlCopy && command === "wl-copy";
+    const status = await withWaylandEnvironment(desktop, () => manager.checkPasteTools());
+    assert.equal(status.wlCopyMissing, wlCopyMissing, `${desktop}, wl-copy ${hasWlCopy}`);
+  }
+});
+
+// The wait can outlast a focus change (the user switches to a terminal while
+// still holding a key), so the chord is chosen for the window focused once the
+// keys are up — the one it will actually reach.
+test("the paste target is detected after the modifier wait", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [0], { stdout: ["MODIFIERS released 400\n"] }),
+    realModifierWait: true,
+  });
+  const manager = new TestClipboardManager();
+  const dispatched = [];
+  manager.commandExists = (command) => command === "hyprctl";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+  manager._detectHyprlandWindowClass = () => (spawnCalls.length > 0 ? "kitty" : "gedit");
+  manager._runLinuxPasteCommand = async (command, args) => dispatched.push(args.at(-1));
+  manager._restoreClipboardAfterDelay = async () => {};
+
+  await withWaylandEnvironment("Hyprland", () => manager.pasteLinux(null));
+
+  assert.deepEqual(spawnCalls, [MODIFIER_WAIT_CALL]);
+  assert.match(dispatched[0], /mods = "CTRL SHIFT", key = "V"/);
+});
+
+// "unknown" (a Wayland session without /dev/input access) and the capabilities
+// line an older binary prints for the unknown flag both mean the state can't be
+// read, which must paste exactly as before.
+for (const [label, output] of [
+  ["an unreadable key state", "MODIFIERS unknown 0\n"],
+  ["an older binary", "paste-v1 selection-copy-v1 target-window-v1\n"],
+]) {
+  test(`${label} still pastes`, async () => {
+    const spawnCalls = [];
+    const TestClipboardManager = loadClipboardManager({
+      spawn: createSpawn(spawnCalls, [0, 0], { stdout: [output] }),
+      realModifierWait: true,
+    });
+    const manager = new TestClipboardManager();
+    manager.commandExists = (command) => command === "wtype";
+    manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+    await withWaylandEnvironment("Sway", () => manager.pasteLinux(null));
+
+    assert.deepEqual(
+      spawnCalls.map((call) => call.command),
+      ["/tmp/linux-fast-paste", "wtype"]
+    );
+  });
+}
+
+// The helper can only hang if the X server or an evdev read stalls, but a hung
+// wait must never hang the paste: the watchdog kills it and pastes as before.
+test("a hung modifier wait is killed after the watchdog budget, reads as unknown, and ignores its late answer", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const debugLogger = require("../../src/helpers/debugLogger");
+  const info = t.mock.method(debugLogger, "info");
+  const kills = [];
+  let hungProcess;
+  const TestClipboardManager = loadClipboardManager({
+    spawn: () => {
+      hungProcess = new EventEmitter();
+      hungProcess.stdout = new EventEmitter();
+      hungProcess.stderr = new EventEmitter();
+      hungProcess.exitCode = null;
+      hungProcess.kill = (signal) => kills.push(signal);
+      return hungProcess;
+    },
+    realModifierWait: true,
+  });
+  const manager = new TestClipboardManager();
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+  let state = null;
+  const wait = manager._awaitModifierRelease().then((resolved) => {
+    state = resolved.state;
+  });
+  t.mock.timers.tick(2499);
+  await Promise.resolve();
+  assert.equal(state, null, "the wait budget plus a second of slack is honored");
+  assert.deepEqual(kills, []);
+
+  t.mock.timers.tick(1);
+  await wait;
+  assert.equal(state, "unknown");
+  assert.deepEqual(kills, ["SIGKILL"]);
+
+  hungProcess.stdout.emit("data", "MODIFIERS held 1500\n");
+  hungProcess.emit("close", null);
+  assert.equal(
+    info.mock.calls.filter((call) => call.arguments[0] === "Waited for held modifier keys").length,
+    0,
+    "a killed helper's late output is not logged as a wait"
+  );
+});
+
+// Without /dev/input access on Wayland the helper answers "unknown" and the fix
+// is inert; the log must say so once, or support cannot tell that from "released".
+test("an unreadable modifier state is logged once per session", async (t) => {
+  const debugLogger = require("../../src/helpers/debugLogger");
+  const info = t.mock.method(debugLogger, "info");
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn([], [0, 0, 0, 0], {
+      stdout: ["MODIFIERS unknown 0\n", "", "MODIFIERS unknown 0\n", ""],
+    }),
+    realModifierWait: true,
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+  await withWaylandEnvironment("Sway", async () => {
+    await manager.pasteLinux(null);
+    await manager.pasteLinux(null);
+  });
+
+  const unreadable = info.mock.calls.filter(
+    (call) => call.arguments[0] === "Modifier key state unreadable, pasting without waiting"
+  );
+  assert.equal(unreadable.length, 1);
+  assert.deepEqual(unreadable[0].arguments[1], {
+    isWayland: true,
+    helperOutput: "MODIFIERS unknown 0",
+  });
+  assert.equal(unreadable[0].arguments[2], "clipboard");
+});
+
+test(
+  "a modifier wait whose helper fails to spawn reads as unknown",
+  { timeout: 5000 },
+  async (t) => {
+    // Frozen timers: only the spawn error itself may settle the wait, not the watchdog.
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const TestClipboardManager = loadClipboardManager({
+      spawn: () => {
+        const failedProcess = new EventEmitter();
+        failedProcess.stdout = new EventEmitter();
+        failedProcess.stderr = new EventEmitter();
+        process.nextTick(() => failedProcess.emit("error", new Error("ENOENT")));
+        return failedProcess;
+      },
+      realModifierWait: true,
+    });
+    const manager = new TestClipboardManager();
+    manager.resolveLinuxFastPasteBinary = () => "/tmp/linux-fast-paste";
+
+    assert.deepEqual(await manager._awaitModifierRelease(), { state: "unknown", waitedMs: 0 });
+  }
+);
+
+test("without the fast-paste binary the paste chain is unchanged", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+    realModifierWait: true,
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (command) => command === "wtype";
+  manager.resolveLinuxFastPasteBinary = () => null;
+
+  await withWaylandEnvironment("Sway", () => manager.pasteLinux(null));
+
+  assert.deepEqual(
+    spawnCalls.map((call) => call.command),
+    ["wtype"]
+  );
+});
+
+test("pasteMacOS restores clipboard after the short macOS delay on successful fast paste", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  const originalClipboard = { type: "text", data: "previous clipboard" };
+  let restoreCall;
+
+  manager.resolveFastPasteBinary = () => "/tmp/openwhispr-fast-paste";
+  manager._restoreClipboardAfterDelay = (original, options) => {
+    restoreCall = { original, options };
+    return Promise.resolve();
+  };
+
+  const result = await manager.pasteMacOS(originalClipboard, {
+    expectedClipboardText: "dictated text",
+    fromStreaming: true,
+  });
+  await result.restoreComplete;
+
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].command, "/tmp/openwhispr-fast-paste");
+  assert.equal(restoreCall.original, originalClipboard);
+  assert.deepEqual(restoreCall.options, {
+    delayMs: 450,
+    expectedText: "dictated text",
+  });
+});
+
+test("pasteMacOS leaves text on the clipboard when the keyboard layout cannot be resolved", async () => {
+  resetClipboard({ text: "dictated text" });
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSpawn(spawnCalls, [3]),
+  });
+  const manager = new TestClipboardManager();
+  manager.fastPastePath = "/tmp/openwhispr-fast-paste";
+  manager.fastPasteChecked = true;
+  let restoreCalls = 0;
+  manager._restoreClipboardAfterDelay = () => {
+    restoreCalls++;
+    return Promise.resolve();
+  };
+
+  await assert.rejects(
+    manager.pasteMacOS({ type: "text", data: "previous clipboard" }),
+    /could not resolve the active keyboard layout/
+  );
+
+  assert.deepEqual(spawnCalls, [{ command: "/tmp/openwhispr-fast-paste", args: [] }]);
+  assert.equal(fakeClipboard.text, "dictated text");
+  assert.deepEqual(fakeClipboard.writes, []);
+  assert.equal(restoreCalls, 0);
+  assert.equal(manager.fastPastePath, "/tmp/openwhispr-fast-paste");
+  assert.equal(manager.fastPasteChecked, true);
+});
+
+test("pasteMacOSWithOsascript fallback uses the short macOS restore delay", async () => {
+  const spawnCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawn: createSuccessfulSpawn(spawnCalls),
+  });
+  const manager = new TestClipboardManager();
+  const originalClipboard = { type: "text", data: "previous clipboard" };
+  let restoreCall;
+
+  manager._restoreClipboardAfterDelay = (original, options) => {
+    restoreCall = { original, options };
+    return Promise.resolve();
+  };
+
+  const result = await manager.pasteMacOSWithOsascript(originalClipboard, {
+    expectedClipboardText: "dictated text",
+  });
+  await result.restoreComplete;
+
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].command, "osascript");
+  assert.deepEqual(spawnCalls[0].args, [
+    "-e",
+    'tell application "System Events" to key code 9 using command down',
+  ]);
+  assert.equal(restoreCall.original, originalClipboard);
+  assert.deepEqual(restoreCall.options, {
+    delayMs: 450,
+    expectedText: "dictated text",
+  });
+});
+
+const FAST_PASTE = "/tmp/openwhispr-fast-paste";
+const SESSION_ARGS = ["--await-read", "3000", "--session"];
+
+// A fast-paste binary that reports through `--await-read`: `lines` are printed in
+// order, then it exits with `codes` (one per spawn, 0 once they run out) unless
+// `exits` is false (still waiting, or hung).
+function createReadReportingSpawn(calls, { lines = [], codes = [], exits = true } = {}) {
+  return function readReportingSpawn(command, args = []) {
+    const pasteProcess = new EventEmitter();
+    pasteProcess.stderr = new EventEmitter();
+    pasteProcess.stdout = new EventEmitter();
+    pasteProcess.stdin = {
+      on() {},
+      end(data) {
+        call.stdin = data;
+      },
+    };
+    pasteProcess.exitCode = null;
+    pasteProcess.kill = (signal) => {
+      call.killedWith = signal;
+    };
+    pasteProcess.report = (line) => pasteProcess.stdout.emit("data", `${line}\n`);
+    pasteProcess.exit = (exitCode) => pasteProcess.emit("close", exitCode);
+    const call = { command, args, process: pasteProcess };
+    calls.push(call);
+    process.nextTick(() => {
+      for (const line of lines) pasteProcess.report(line);
+      if (exits) pasteProcess.exit(codes.length > 0 ? codes.shift() : 0);
+    });
+    return pasteProcess;
+  };
+}
+
+function loadMacPasteManager(spawn) {
+  const TestClipboardManager = loadClipboardManager({ spawn });
+  const manager = new TestClipboardManager();
+  manager.resolveFastPasteBinary = () => FAST_PASTE;
+  const restores = [];
+  manager._restoreClipboardAfterDelay = (original, options) => {
+    restores.push({ original, options });
+    return Promise.resolve();
+  };
+  return { manager, restores };
+}
+
+const ORIGINAL = { type: "text", data: "previous clipboard" };
+
+const sessionRestore = (delayMs, call) => ({
+  delayMs,
+  expectedSession: call.args[3],
+  expectedText: "dictated text",
+});
+
+test("pasteMacOS hands the transcript to the binary and restores just after the target reads it", async () => {
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { lines: ["PASTE_POSTED", "PASTE_READ 900"] })
+  );
+
+  const result = await manager.pasteMacOS(ORIGINAL, {
+    expectedClipboardText: "dictated text",
+    fromStreaming: true,
+  });
+  await result.restoreComplete;
+
+  const [call] = calls;
+  assert.equal(call.command, FAST_PASTE);
+  assert.deepEqual(call.args.slice(0, 3), SESSION_ARGS);
+  const session = call.args[3];
+  assert.match(session, /^[0-9a-f-]{36}$/);
+  assert.equal(call.stdin, "dictated text", "the transcript goes over stdin, never argv");
+  assert.deepEqual(restores, [{ original: ORIGINAL, options: sessionRestore(50, call) }]);
+});
+
+// An early reader (a clipboard manager ignoring the transient marker) must not
+// restore the clipboard before a slower target pastes, so a read never restores
+// sooner than the plain delay after ⌘V. Without a read to go by, the plain delay.
+for (const [label, lines, delayMs] of [
+  ["an early read", ["PASTE_POSTED", "PASTE_READ 120"], 330],
+  ["nothing read in the budget", ["PASTE_POSTED", "PASTE_NOT_READ"], 0],
+  ["another copy before the read", ["PASTE_POSTED", "PASTE_REPLACED"], 0],
+  ["no verdict", ["PASTE_POSTED"], 450],
+  ["an unknown verdict", ["PASTE_POSTED", "PASTE_READ_LATER"], 450],
+]) {
+  test(`pasteMacOS restores after ${delayMs} ms on ${label}`, async () => {
+    const calls = [];
+    const { manager, restores } = loadMacPasteManager(createReadReportingSpawn(calls, { lines }));
+
+    const result = await manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" });
+    await result.restoreComplete;
+
+    assert.deepEqual(restores[0].options, sessionRestore(delayMs, calls[0]));
+  });
+}
+
+test("pasteMacOS reads the binary's report across split chunks", async () => {
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { exits: false })
+  );
+
+  const pasting = manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  for (const chunk of ["PASTE_POS", "TED\nPASTE_REA", "D 100\n"]) {
+    calls[0].process.stdout.emit("data", chunk);
+  }
+  calls[0].process.exit(0);
+  await (
+    await pasting
+  ).restoreComplete;
+
+  assert.deepEqual(restores[0].options, sessionRestore(350, calls[0]));
+});
+
+// A Chromium browser gets the transcript typed from stdin: the pasteboard still holds
+// the user's clipboard, so nothing writes to it and nothing restores it.
+test("a typed dictation never touches the user's clipboard", async (t) => {
+  withDarwin(t);
+  resetClipboard({ text: "previous clipboard" });
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { lines: ["PASTE_POSTED typed", "PASTE_TYPED"] })
+  );
+
+  const result = await manager._pasteText("dictated text");
+  await result.restoreComplete;
+
+  assert.equal(calls[0].stdin, "dictated text");
+  assert.equal(result.method, "typed");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(restores, []);
+  assert.deepEqual(fakeClipboard.writes, []);
+  assert.equal(fakeClipboard.text, "previous clipboard");
+});
+
+// With "Keep transcription in clipboard" the binary types what the caller left on
+// the clipboard. It still reports the typing, so a slow or killed run isn't retried.
+test("a typed dictation kept on the clipboard is never typed twice", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls = [];
+  const { manager } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { lines: ["PASTE_POSTED typed"], exits: false })
+  );
+
+  const pasting = manager.pasteMacOS(null, { expectedClipboardText: "dictated text" });
+  t.mock.timers.tick(120);
+  await new Promise((resolve) => process.nextTick(resolve));
+  t.mock.timers.tick(3000);
+  const result = await pasting;
+  await result.restoreComplete;
+
+  assert.equal(result.method, "typed");
+  assert.equal(calls[0].stdin, undefined, "no paste session without a restore");
+  assert.equal(calls[0].killedWith, "SIGKILL");
+  assert.equal(calls.length, 1);
+});
+
+test("pasteMacOS settles the paste once ⌘V is out, without waiting for the read", async () => {
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { lines: ["PASTE_POSTED"], exits: false })
+  );
+
+  const result = await manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" });
+  assert.equal(restores.length, 0, "the restore waits for the target");
+
+  calls[0].process.report("PASTE_READ 1400");
+  calls[0].process.exit(0);
+  await result.restoreComplete;
+  assert.equal(restores[0].options.delayMs, 50);
+});
+
+test("a binary that dies after posting ⌘V is never retried or replaced by osascript", async () => {
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { lines: ["PASTE_POSTED"], codes: [null] })
+  );
+
+  const result = await manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" });
+  await result.restoreComplete;
+
+  assert.deepEqual(
+    calls.map((call) => call.command),
+    [FAST_PASTE]
+  );
+  assert.equal(manager.fastPasteChecked, false, "the fast path stays in use");
+  assert.deepEqual(restores[0].options, sessionRestore(450, calls[0]));
+});
+
+test("a binary still running past its budget is killed without pasting again", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { lines: ["PASTE_POSTED"], exits: false })
+  );
+
+  const pasting = manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" });
+  t.mock.timers.tick(120);
+  await new Promise((resolve) => process.nextTick(resolve));
+  const result = await pasting;
+
+  t.mock.timers.tick(5999);
+  assert.equal(calls[0].killedWith, undefined, "the budget and the binary's own work fit");
+  t.mock.timers.tick(1);
+  assert.equal(calls[0].killedWith, "SIGKILL");
+  await result.restoreComplete;
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(restores[0].options, sessionRestore(450, calls[0]));
+});
+
+// The binary clears the pasteboard for its promise right before ⌘V, and Electron no
+// longer writes the transcript first, so any failure before ⌘V must put it back.
+for (const [label, codes, commands] of [
+  ["exits with an error", [1], [FAST_PASTE, "osascript"]],
+  ["cannot resolve the layout", [3], [FAST_PASTE]],
+]) {
+  test(`a binary that ${label} before posting ⌘V leaves the transcript on the clipboard`, async () => {
+    resetClipboard({ text: "previous clipboard" });
+    const calls = [];
+    const { manager } = loadMacPasteManager(createReadReportingSpawn(calls, { codes }));
+
+    await manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" }).catch(() => {});
+
+    assert.deepEqual(
+      calls.map((call) => call.command),
+      commands
+    );
+    assert.equal(fakeClipboard.text, "dictated text");
+  });
+}
+
+test("a binary that never reports ⌘V is not retried, since its report may be unread", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  resetClipboard({ text: "previous clipboard" });
+  const calls = [];
+  const { manager } = loadMacPasteManager(createReadReportingSpawn(calls, { exits: false }));
+
+  const pasting = manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" });
+  t.mock.timers.tick(120);
+  t.mock.timers.tick(6000);
+
+  await assert.rejects(pasting, (error) => error.pasteMayHavePosted === true);
+  assert.equal(calls[0].killedWith, "SIGKILL");
+  assert.equal(fakeClipboard.text, "dictated text");
+});
+
+test("an older binary that prints nothing keeps the text-checked restore", async () => {
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(createReadReportingSpawn(calls));
+
+  const result = await manager.pasteMacOS(ORIGINAL, { expectedClipboardText: "dictated text" });
+  await result.restoreComplete;
+
+  assert.deepEqual(restores[0].options, { delayMs: 450, expectedText: "dictated text" });
+});
+
+function withDarwin(t) {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "darwin" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+}
+
+test("a restored macOS paste leaves the transcript to the binary alone", async (t) => {
+  withDarwin(t);
+  resetClipboard({ text: "previous clipboard" });
+  const calls = [];
+  const { manager } = loadMacPasteManager(
+    createReadReportingSpawn(calls, { lines: ["PASTE_POSTED", "PASTE_READ 40"] })
+  );
+
+  const result = await manager._pasteText("dictated text");
+
+  assert.deepEqual(fakeClipboard.writes, [], "no plain write for managers or Handoff to see");
+  assert.equal(calls[0].stdin, "dictated text");
+  assert.notEqual(result.pasted, false);
+});
+
+// Without a restore there is no paste session, but the binary still posts ⌘V or
+// starts typing before it reports it, so a kill before the report is not retried.
+test("a binary killed before reporting is not retried when nothing is restored", async (t) => {
+  withDarwin(t);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const calls = [];
+  const { manager } = loadMacPasteManager(createReadReportingSpawn(calls, { exits: false }));
+
+  const pasting = manager._pasteText("dictated text", { restoreClipboard: false });
+  const rejected = assert.rejects(pasting, /timed out/);
+  // Long enough for a retry to time out as well, so a retry fails the test.
+  for (let tick = 0; tick < 10; tick++) {
+    await new Promise((resolve) => process.nextTick(resolve));
+    t.mock.timers.tick(1000);
+  }
+  await rejected;
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].stdin, undefined);
+});
+
+test("_pasteText does not retry a paste that may already have been posted", async (t) => {
+  withDarwin(t);
+  const calls = [];
+  const { manager } = loadMacPasteManager(createReadReportingSpawn(calls));
+  manager.pasteMacOS = async () => {
+    calls.push("paste");
+    throw Object.assign(new Error("Paste operation timed out."), { pasteMayHavePosted: true });
+  };
+
+  await assert.rejects(manager._pasteText("dictated text"), /timed out/);
+  assert.deepEqual(calls, ["paste"]);
+});
+
+test("without Accessibility a restored macOS paste still leaves the transcript", async (t) => {
+  withDarwin(t);
+  const Manager = loadClipboardManager({ accessibility: false });
+  const manager = new Manager();
+  manager.resolveFastPasteBinary = () => FAST_PASTE;
+  manager.showAccessibilityDialog = () => {};
+  resetClipboard({ text: "previous clipboard" });
+
+  const result = await manager._pasteText("dictated text", { allowClipboardFallback: true });
+
+  assert.equal(result.pasted, false);
+  assert.equal(fakeClipboard.text, "dictated text");
+});
+
+test("pasteMacOS hands nothing to the binary when the clipboard is not restored", async () => {
+  const calls = [];
+  const { manager, restores } = loadMacPasteManager(createReadReportingSpawn(calls));
+
+  const result = await manager.pasteMacOS(null, { expectedClipboardText: "dictated text" });
+  await result.restoreComplete;
+
+  assert.deepEqual(calls[0].args, []);
+  assert.equal(calls[0].stdin, undefined);
+  assert.equal(restores.length, 0);
+});
+
+test("a restore bound to a paste session checks the tag first, then the text", async () => {
+  const manager = new ClipboardManager();
+  const original = { type: "text", data: "previous clipboard" };
+  const restoreWith = (text, tag) => {
+    resetClipboard({ text });
+    if (tag) fakeClipboard.buffers = { "com.openwhispr.paste-session": tag };
+    return manager._restoreClipboardAfterDelay(original, {
+      delayMs: 0,
+      expectedSession: "session-1",
+      expectedText: "dictated text",
+    });
+  };
+
+  // A binary killed before handing the transcript over leaves its item, but no text.
+  await restoreWith("", "session-1");
+  assert.equal(fakeClipboard.text, "previous clipboard");
+
+  // An app that rewrote the transcript as plain text dropped the tag.
+  await restoreWith("dictated text", null);
+  assert.equal(fakeClipboard.text, "previous clipboard");
+
+  await restoreWith("copied since", null);
+  assert.equal(fakeClipboard.text, "copied since");
+});
+
+// Terminal detection now serves two callers: the Linux paste path, which matches
+// window classes, and macOS selection capture, which matches localized app names.
+test("terminal detection matches window classes and macOS app names alike", () => {
+  const manager = new ClipboardManager();
+
+  for (const signature of ["konsole", "org.kde.konsole", "Ghostty", "kitty", "WezTerm"]) {
+    assert.equal(manager.isTerminalSignature(signature), true, signature);
+  }
+  // iTerm2 has no Linux window class, so it only appears in the macOS-facing list.
+  assert.equal(manager.isTerminalSignature("iTerm2"), true);
+  assert.equal(manager.isTerminalSignature("Terminal"), true);
+
+  for (const signature of ["Dia", "Google Chrome", "Mail", "", null, undefined]) {
+    assert.equal(manager.isTerminalSignature(signature), false, String(signature));
+  }
+
+  // The Linux window-class entry point keeps behaving exactly as before.
+  assert.equal(manager.isLinuxTerminalWindowClass("konsole"), true);
+  assert.equal(manager.isLinuxTerminalWindowClass("org.mozilla.firefox"), false);
+  assert.equal(manager.isLinuxTerminalWindowClass(null), false);
+});
+
+for (const silent of [true, false]) {
+  test(`macOS denial preserves text and owns the dialog only when silent=${silent}`, async (t) => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    t.after(() => Object.defineProperty(process, "platform", platform));
+    const Manager = loadClipboardManager({ accessibility: false });
+    const manager = new Manager();
+    manager.resolveFastPasteBinary = () => null;
+    let dialogs = 0;
+    manager.showAccessibilityDialog = () => {
+      dialogs += 1;
+    };
+    resetClipboard({ text: "previous" });
+    await assert.rejects(
+      manager._pasteText("  final text\n", { silentAccessibilityCheck: silent }),
+      (error) => {
+        assert.equal(error.code, "ACCESSIBILITY_PERMISSION_REQUIRED");
+        assert.equal(error.clipboardCopied, true);
+        return true;
+      }
+    );
+    assert.equal(fakeClipboard.text, "  final text\n");
+    assert.equal(dialogs, silent ? 0 : 1);
+  });
+}
+
+test("intentional macOS clipboard fallback stays silent and does not throw", async (t) => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "darwin" });
+  t.after(() => Object.defineProperty(process, "platform", platform));
+  const Manager = loadClipboardManager({ accessibility: false });
+  const manager = new Manager();
+  manager.resolveFastPasteBinary = () => null;
+  manager.showAccessibilityDialog = () => assert.fail("unexpected dialog");
+  resetClipboard();
+  const result = await manager._pasteText("manual text", { allowClipboardFallback: true });
+  assert.equal(result.pasted, false);
+  assert.equal(fakeClipboard.text, "manual text");
+});
+
+test("clipboard write failure is never classified as an Accessibility denial", async (t) => {
+  const write = fakeClipboard.writeText;
+  fakeClipboard.writeText = () => {
+    throw new Error("clipboard unavailable");
+  };
+  t.after(() => {
+    fakeClipboard.writeText = write;
+  });
+  const manager = new ClipboardManager();
+  await assert.rejects(manager._pasteText("final text"), (error) => {
+    assert.equal(error.message, "clipboard unavailable");
+    assert.equal(error.code, undefined);
+    assert.equal(error.clipboardCopied, undefined);
+    return true;
+  });
+});
+
+test("_writeClipboardWayland on KDE writes wl-copy (Wayland) and Electron's X11 clipboard", async () => {
+  const spawnSyncCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawnSync: createSpawnSync(spawnSyncCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (cmd) => ["wl-copy", "xclip"].includes(cmd);
+  resetClipboard();
+
+  await withWaylandEnvironment("KDE", async () => {
+    manager._writeClipboardWayland("dictated KDE text");
+  });
+
+  assert.deepEqual(
+    spawnSyncCalls.map((call) => [call.command, call.args]),
+    [["wl-copy", ["--", "dictated KDE text"]]]
+  );
+  assert.equal(fakeClipboard.text, "dictated KDE text");
+});
+
+test("_writeClipboardWayland on KDE uses renderer fallback when wl-copy is unavailable", async () => {
+  const spawnSyncCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawnSync: createSpawnSync(spawnSyncCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (cmd) => cmd === "xclip";
+  resetClipboard();
+
+  let rendererWritten = null;
+  const webContents = {
+    isDestroyed: () => false,
+    executeJavaScript: async (code) => {
+      rendererWritten = code;
+    },
+  };
+
+  await withWaylandEnvironment("KDE", async () => {
+    manager._writeClipboardWayland("dictated KDE text", webContents);
+  });
+
+  assert.equal(rendererWritten.includes("dictated KDE text"), true);
+  assert.equal(fakeClipboard.text, "dictated KDE text");
+});
+
+test("_writePrimarySelection on KDE mirrors wl-copy to Electron's X11 selection", async () => {
+  const spawnSyncCalls = [];
+  const TestClipboardManager = loadClipboardManager({
+    spawnSync: createSpawnSync(spawnSyncCalls),
+  });
+  const manager = new TestClipboardManager();
+  manager.commandExists = (cmd) => ["wl-copy", "xclip"].includes(cmd);
+  resetClipboard();
+
+  await withWaylandEnvironment("KDE", async () => {
+    manager._writePrimarySelection("selection text");
+  });
+
+  assert.deepEqual(
+    spawnSyncCalls.map((call) => [call.command, call.args]),
+    [["wl-copy", ["--primary", "--", "selection text"]]]
+  );
+  assert.deepEqual(fakeClipboard.writes, [["writeText", "selection text", "selection"]]);
+});

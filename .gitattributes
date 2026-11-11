@@ -1,0 +1,23 @@
+# Auto-detect text files and normalize line endings to LF on commit
+* text=auto eol=lf
+
+# Windows-specific scripts require CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.bin binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary

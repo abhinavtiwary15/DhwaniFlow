@@ -1,0 +1,182 @@
+[
+  {
+    "id": "s01",
+    "text": "bhai kal ka standup kitne baje hai",
+    "category": "easy",
+    "must_have_terms": []
+  },
+  {
+    "id": "s02",
+    "text": "mujhe ek minute do main apna code dekh leta hoon",
+    "category": "easy",
+    "must_have_terms": ["code"]
+  },
+  {
+    "id": "s03",
+    "text": "ye bug kal se aa raha hai fix kar do please",
+    "category": "easy",
+    "must_have_terms": ["bug", "fix"]
+  },
+  {
+    "id": "s04",
+    "text": "meeting ke baad mujhe summary bhej dena",
+    "category": "easy",
+    "must_have_terms": ["meeting", "summary"]
+  },
+  {
+    "id": "s05",
+    "text": "client ko bol do ki demo shukravaar ko hoga",
+    "category": "easy",
+    "must_have_terms": ["client", "demo"]
+  },
+  {
+    "id": "s06",
+    "text": "useEffect mein API call fail ho jaye toh error state set karo",
+    "category": "tech",
+    "must_have_terms": ["useEffect", "API", "error", "state"]
+  },
+  {
+    "id": "s07",
+    "text": "PR merge karne se pehle ek baar tests chala lo",
+    "category": "tech",
+    "must_have_terms": ["PR", "merge", "tests"]
+  },
+  {
+    "id": "s08",
+    "text": "Kubernetes pod crash ho raha hai logs check karo",
+    "category": "tech",
+    "must_have_terms": ["Kubernetes", "pod", "logs"]
+  },
+  {
+    "id": "s09",
+    "text": "is function ko async bana do aur await laga do",
+    "category": "tech",
+    "must_have_terms": ["function", "async", "await"]
+  },
+  {
+    "id": "s10",
+    "text": "Docker container build hone ke baad staging pe deploy karo",
+    "category": "tech",
+    "must_have_terms": ["Docker", "container", "build", "staging", "deploy"]
+  },
+  {
+    "id": "s11",
+    "text": "useState ka initial value null rakho aur loading flag add karo",
+    "category": "tech",
+    "must_have_terms": ["useState", "null", "loading"]
+  },
+  {
+    "id": "s12",
+    "text": "main branch se naya feature branch banao aur commit push karo",
+    "category": "tech",
+    "must_have_terms": ["branch", "feature", "commit", "push"]
+  },
+  {
+    "id": "s13",
+    "text": "backend ka endpoint 500 error de raha hai database connection check karo",
+    "category": "tech",
+    "must_have_terms": ["backend", "endpoint", "500", "database"]
+  },
+  {
+    "id": "s14",
+    "text": "is component ko TypeScript mein convert karo aur props ke types define karo",
+    "category": "tech",
+    "must_have_terms": ["component", "TypeScript", "props", "types"]
+  },
+  {
+    "id": "s15",
+    "text": "JWT token expire hone par refresh token se naya token generate karo",
+    "category": "tech",
+    "must_have_terms": ["JWT", "token", "refresh"]
+  },
+  {
+    "id": "s16",
+    "text": "Redis cache mein user session store karo aur TTL ek ghanta rakho",
+    "category": "tech",
+    "must_have_terms": ["Redis", "cache", "session", "TTL"]
+  },
+  {
+    "id": "s17",
+    "text": "pull request mein review comments resolve karo phir rebase kar lo",
+    "category": "tech",
+    "must_have_terms": ["pull request", "review", "rebase"]
+  },
+  {
+    "id": "s18",
+    "text": "order amount dedh lakh rupaye hai",
+    "category": "numbers",
+    "must_have_terms": ["150000"]
+  },
+  {
+    "id": "s19",
+    "text": "payment ka reference number do hazaar paanch sau tees hai",
+    "category": "numbers",
+    "must_have_terms": ["2532"]
+  },
+  {
+    "id": "s20",
+    "text": "mera pincode ek ek zero zero zero chaar hai",
+    "category": "numbers",
+    "must_have_terms": ["110004"]
+  },
+  {
+    "id": "s21",
+    "text": "server port teen hazaar pe chal raha hai",
+    "category": "numbers",
+    "must_have_terms": ["3000"]
+  },
+  {
+    "id": "s22",
+    "text": "api rate limit ek minute mein sau requests hai",
+    "category": "numbers",
+    "must_have_terms": ["100"]
+  },
+  {
+    "id": "s23",
+    "text": "build number do sau paintalis hai",
+    "category": "numbers",
+    "must_have_terms": ["245"]
+  },
+  {
+    "id": "s24",
+    "text": "ticket number J I R A dash char sau baais",
+    "category": "numbers",
+    "must_have_terms": ["JIRA-422", "JIRA 422"]
+  },
+  {
+    "id": "s25",
+    "text": "invoice ka total paanch lakh pachaas hazaar hai GST alag se",
+    "category": "numbers",
+    "must_have_terms": ["550000", "GST"]
+  },
+  {
+    "id": "s26",
+    "text": "yaar ye regex thoda tricky hai isko unit test ke saath likho",
+    "category": "tech",
+    "must_have_terms": ["regex", "unit test"]
+  },
+  {
+    "id": "s27",
+    "text": "dashboard ka loading spinner mobile pe slow hai optimize karo",
+    "category": "tech",
+    "must_have_terms": ["dashboard", "loading", "mobile", "optimize"]
+  },
+  {
+    "id": "s28",
+    "text": "CI pipeline fail ho gaya lint error hai ya test fail",
+    "category": "tech",
+    "must_have_terms": ["CI", "pipeline", "lint", "test"]
+  },
+  {
+    "id": "s29",
+    "text": "environment variable mein API key daalo repo mein commit mat karna",
+    "category": "tech",
+    "must_have_terms": ["environment variable", "API key", "repo", "commit"]
+  },
+  {
+    "id": "s30",
+    "text": "GitHub Actions ka workflow file update karo aur cache enable karo",
+    "category": "tech",
+    "must_have_terms": ["GitHub Actions", "workflow", "cache"]
+  }
+]
