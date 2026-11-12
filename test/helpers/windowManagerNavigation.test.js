@@ -60,10 +60,11 @@ test("only http(s) targets are handed to the external browser", () => {
   assert.equal(isExternalBrowserUrl("devtools://devtools/bundled/inspector.html"), false);
 });
 
-test("window.open hands the OS only web and mail links, never a local path", () => {
-  assert.equal(isExternalOpenUrl("https://example.com/docs"), true);
-  assert.equal(isExternalOpenUrl("http://example.com/"), true);
-  assert.equal(isExternalOpenUrl("mailto:someone@example.com"), true);
+test("window.open accepts only the approved HTTPS origin", () => {
+  assert.equal(isExternalOpenUrl("https://api.vachana.ai/docs"), true);
+  assert.equal(isExternalOpenUrl("https://example.com/docs"), false);
+  assert.equal(isExternalOpenUrl("http://example.com/"), false);
+  assert.equal(isExternalOpenUrl("mailto:someone@example.com"), false);
   // A relative Markdown link resolves against the packaged file:// page.
   assert.equal(isExternalOpenUrl("file:///C:/Windows/System32/cmd.exe"), false);
   assert.equal(isExternalOpenUrl("file://attacker.example/share/run.exe"), false);

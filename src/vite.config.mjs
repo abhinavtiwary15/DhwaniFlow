@@ -2,7 +2,6 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
-import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,16 +31,15 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       {
-        name: "write-runtime-env",
-        writeBundle() {
-          const runtimeEnv = {
-            VITE_OPENWHISPR_API_URL: env.VITE_OPENWHISPR_API_URL || "",
-            VITE_AUTH_URL: env.VITE_AUTH_URL || "",
-          };
-          fs.writeFileSync(
-            path.resolve(__dirname, "dist", "runtime-env.json"),
-            JSON.stringify(runtimeEnv)
-          );
+        name: "development-content-security-policy",
+        apply: "serve",
+        transformIndexHtml(html) {
+          return html
+            .replace("script-src 'self';", "script-src 'self' 'unsafe-inline';")
+            .replace(
+              "connect-src 'none';",
+              `connect-src http://127.0.0.1:${devServerPort} ws://127.0.0.1:${devServerPort};`
+            );
         },
       },
     ],
@@ -73,9 +71,6 @@ export default defineConfig(({ mode }) => {
           "stream",
           "util",
           "zlib",
-          "tar",
-          "unzipper",
-          "@aws-sdk/client-s3",
         ],
         output: {
           manualChunks(id) {

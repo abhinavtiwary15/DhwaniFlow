@@ -173,13 +173,16 @@ describe("settingsMigration", () => {
     assert.equal(result.openaiApiKey, undefined);
 
     // Exactly the allowlisted fields exist in result
-    assert.deepEqual(Object.keys(result).sort(), ["dictationKey", "gnaniLanguage", "showLatencyBadge"].sort());
+    assert.deepEqual(
+      Object.keys(result).sort(),
+      ["dictationKey", "gnaniLanguage", "showLatencyBadge"].sort()
+    );
   });
 
-  test("allows all 30 known active DhwaniFlow settings keys", () => {
+  test("allows the retained settings keys", () => {
     const { ALLOWED_SETTINGS_KEYS } = require("../../src/helpers/settingsMigration");
     assert.ok(ALLOWED_SETTINGS_KEYS, "Expected ALLOWED_SETTINGS_KEYS to be exported");
-    assert.equal(ALLOWED_SETTINGS_KEYS.size, 30);
+    assert.equal(ALLOWED_SETTINGS_KEYS.size, 23);
     assert.ok(!ALLOWED_SETTINGS_KEYS.has("gnaniApiKey"));
 
     const fullProfile = {};

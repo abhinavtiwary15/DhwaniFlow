@@ -9,24 +9,25 @@ const registerListener = (channel, handlerFactory) => {
     if (typeof callback !== "function") {
       return () => {};
     }
-
     const listener =
       typeof handlerFactory === "function"
         ? handlerFactory(callback)
         : (event, ...args) => callback(event, ...args);
-
     ipcRenderer.on(channel, listener);
     return () => {
       ipcRenderer.removeListener(channel, listener);
     };
   };
 };
-
 contextBridge.exposeInMainWorld("electronAPI", {
   // Window controls
   hideWindow: () => ipcRenderer.invoke("hide-window"),
   showDictationPanel: () => ipcRenderer.invoke("show-dictation-panel"),
   openSettingsSection: (section) => ipcRenderer.invoke("open-settings-section", section),
+  onOpenSettingsSection: registerListener(
+    "open-settings-section",
+    (callback) => (_event, section) => callback(section)
+  ),
   windowMinimize: () => ipcRenderer.invoke("window-minimize"),
   windowMaximize: () => ipcRenderer.invoke("window-maximize"),
   windowClose: () => ipcRenderer.invoke("window-close"),
@@ -38,12 +39,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   getPlatform: () => process.platform,
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
-  getLogs: () => ipcRenderer.invoke("get-logs"),
-  openLogFolder: () => ipcRenderer.invoke("open-logs-folder"),
   setMainWindowInputRegions: (regions) =>
     ipcRenderer.invoke("set-main-window-input-region", regions?.[0] || regions),
-  setMainWindowInputRegion: (region) =>
-    ipcRenderer.invoke("set-main-window-input-region", region),
+  setMainWindowInputRegion: (region) => ipcRenderer.invoke("set-main-window-input-region", region),
   onMainWindowVisibilityChanged: registerListener(
     "main-window-visibility-changed",
     (callback) => (_event, visible) => callback(visible)
@@ -65,21 +63,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   stopWindowDrag: () => ipcRenderer.send("stop-window-drag"),
   startControlPanelDrag: () => ipcRenderer.send("start-control-panel-drag"),
   stopControlPanelDrag: () => ipcRenderer.send("stop-control-panel-drag"),
-
   // Onboarding & Permissions
   setOnboardingWindowMode: (mode) => ipcRenderer.invoke("onboarding-set-window-mode", mode),
   setOnboardingActive: (active) => ipcRenderer.invoke("onboarding-set-active", active),
-  openPermissionGuide: (state) => ipcRenderer.invoke("permission-guide-open", state),
-  closePermissionGuide: () => ipcRenderer.invoke("permission-guide-close"),
-  getPermissionGuideState: () => ipcRenderer.invoke("permission-guide-state"),
-  permissionGuideAction: (action) => ipcRenderer.send("permission-guide-action", action),
-  startPermissionGuideDrag: (target) => ipcRenderer.send("permission-guide-drag", target),
-
   // Dictation & Audio
-  captureDictationTarget: () => ipcRenderer.invoke("capture-dictation-target"),
-  captureDictationAppCategory: () => ipcRenderer.invoke("capture-dictation-app-category"),
+
   onToggleDictation: registerListener(
     "toggle-dictation",
+    (callback) => (_event, opts) => callback(opts)
+  ),
+  onToggleCommand: registerListener(
+    "toggle-command",
     (callback) => (_event, opts) => callback(opts)
   ),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
@@ -97,11 +91,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     "dictation-force-stopped",
     (callback) => (_event, payload) => callback(payload)
   ),
-  micWarmHoldChanged: (active) => ipcRenderer.send("mic-warm-hold-changed", active),
+  onMainWindowWillResize: registerListener(
+    "main-window-will-resize",
+    (callback) => (_event, plan) => callback(plan)
+  ),
+  ackMainWindowResizeMask: (token) => ipcRenderer.send("main-window-resize-mask-ready", token),
   dictationLifecycleStateChanged: (state, inputKind) =>
     ipcRenderer.send("dictation-lifecycle-state-changed", state, inputKind),
-  dictationAudioLevelChanged: (level) =>
-    ipcRenderer.send("dictation-audio-level-changed", level),
+  dictationAudioLevelChanged: (level) => ipcRenderer.send("dictation-audio-level-changed", level),
   openMicrophoneSettings: () => ipcRenderer.invoke("open-microphone-settings"),
   openSoundInputSettings: () => ipcRenderer.invoke("open-sound-input-settings"),
   requestMicrophoneAccess: () => ipcRenderer.invoke("request-microphone-access"),
@@ -110,34 +107,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("check-accessibility-permission", prompt),
   openAccessibilitySettings: () => ipcRenderer.invoke("open-accessibility-settings"),
   checkPasteTools: () => ipcRenderer.invoke("check-paste-tools"),
-  getMicrophones: () => ipcRenderer.invoke("get-microphones"),
-  setMicrophone: (id) => ipcRenderer.invoke("set-microphone", id),
-  getSelectedMicrophone: () => ipcRenderer.invoke("get-selected-microphone"),
-  getSystemDefaultMicrophone: () => ipcRenderer.invoke("get-system-default-microphone"),
-  getAudioDiagnostics: () => ipcRenderer.invoke("get-audio-diagnostics"),
-  getFFmpegAvailability: () => ipcRenderer.invoke("get-ffmpeg-availability"),
-  startDictationPreview: (opts) => ipcRenderer.invoke("start-dictation-preview", opts),
-  updateDictationPreview: (text) => ipcRenderer.invoke("update-dictation-preview", text),
-  completeDictationPreview: (payload) =>
-    ipcRenderer.invoke("complete-dictation-preview", payload),
-  stopDictationPreview: () => ipcRenderer.invoke("stop-dictation-preview"),
-  hideDictationPreview: () => ipcRenderer.invoke("hide-dictation-preview"),
-  dismissDictationPreview: () => ipcRenderer.invoke("dismiss-dictation-preview"),
-  sendDictationPreviewAudio: (chunk) => ipcRenderer.send("dictation-preview-audio", chunk),
-  setScreenContextEnabled: (enabled) =>
-    ipcRenderer.send("screen-context-set-enabled", enabled),
-
   // Paste, Selection & Clipboard
   pasteText: (text, options) => ipcRenderer.invoke("paste-text", text, options),
-  captureSelectedText: (options) => ipcRenderer.invoke("capture-selected-text", options),
-  replaceSelectedText: (sessionId, text, options) =>
-    ipcRenderer.invoke("replace-selected-text", sessionId, text, options),
-  pasteAtCapturedTarget: (sessionId, text, options) =>
-    ipcRenderer.invoke("paste-at-captured-target", sessionId, text, options),
   writeClipboard: (text) => ipcRenderer.invoke("write-clipboard", text),
   readClipboard: () => ipcRenderer.invoke("read-clipboard"),
   getPasteTools: () => ipcRenderer.invoke("check-paste-tools"),
-
   // Hotkeys & Push to talk
   registerHotkey: (hotkey) => ipcRenderer.invoke("register-hotkey", hotkey),
   unregisterHotkey: () => ipcRenderer.invoke("unregister-hotkey"),
@@ -161,8 +135,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
   registerCancelHotkey: (hotkey) => ipcRenderer.invoke("register-cancel-hotkey", hotkey),
   unregisterCancelHotkey: () => ipcRenderer.invoke("unregister-cancel-hotkey"),
   onCancelHotkeyPressed: registerListener("cancel-hotkey-pressed", (callback) => () => callback()),
-  setHotkeyListeningMode: (enabled) =>
-    ipcRenderer.invoke("set-hotkey-listening-mode", enabled),
+  setHotkeyListeningMode: (enabled) => ipcRenderer.invoke("set-hotkey-listening-mode", enabled),
+  registerCommandHotkey: (hotkey) => ipcRenderer.invoke("register-command-hotkey", hotkey),
+  getCommandModeEnabled: () => ipcRenderer.invoke("get-command-mode-enabled"),
+  setCommandModeEnabled: (enabled) => ipcRenderer.invoke("set-command-mode-enabled", enabled),
+  getCommandHotkey: () => ipcRenderer.invoke("get-command-hotkey"),
+  executeVoiceCommand: (transcript) => ipcRenderer.invoke("execute-voice-command", transcript),
+  cancelVoiceCommand: () => ipcRenderer.invoke("cancel-voice-command"),
+  getCommandHistory: () => ipcRenderer.invoke("get-command-history"),
+  clearCommandHistory: () => ipcRenderer.invoke("clear-command-history"),
+  getCommandKeyterms: () => ipcRenderer.invoke("get-command-keyterms"),
+  onCommandOverlayUpdate: registerListener(
+    "command-overlay-update",
+    (callback) => (_event, data) => callback(data)
+  ),
   onGlobeKeyPressed: registerListener("globe-key-pressed", (callback) => () => callback()),
   onGlobeKeyReleased: registerListener("globe-key-released", (callback) => () => callback()),
   notifyStartMinimizedChanged: (startMinimized) =>
@@ -171,10 +157,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     "floating-icon-auto-hide-changed",
     (callback) => (_event, autoHide) => callback(autoHide)
   ),
-
   // Settings Store
-  getSetting: (key, defaultValue) =>
-    ipcRenderer.invoke("get-setting", key, defaultValue),
+  getSetting: (key, defaultValue) => ipcRenderer.invoke("get-setting", key, defaultValue),
   setSetting: (key, value) => ipcRenderer.invoke("set-setting", key, value),
   getSettings: () => ipcRenderer.invoke("get-settings"),
   onSettingUpdated: registerListener(
@@ -184,13 +168,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getUiLanguage: () => ipcRenderer.invoke("get-ui-language"),
   setUiLanguage: (language) => ipcRenderer.invoke("save-ui-language", language),
   saveUiLanguage: (language) => ipcRenderer.invoke("save-ui-language", language),
-
   // Dictionary & Snippets (Local)
   getDictionary: () => ipcRenderer.invoke("db-get-dictionary"),
-  setDictionary: (words) =>
-    ipcRenderer.invoke("db-apply-dictionary-changes", { added: words, removed: [] }),
-  applyDictionaryChanges: (changes) =>
-    ipcRenderer.invoke("db-apply-dictionary-changes", changes),
+  setDictionary: (words) => ipcRenderer.invoke("db-set-dictionary", words),
+  applyDictionaryChanges: (changes) => ipcRenderer.invoke("db-apply-dictionary-changes", changes),
   onDictionaryUpdated: registerListener(
     "dictionary-updated",
     (callback) => (_event, words) => callback(words)
@@ -205,24 +186,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getDictionaryEntries: () => ipcRenderer.invoke("db-get-dictionary"),
   addDictionaryEntries: (entries) =>
     ipcRenderer.invoke("db-apply-dictionary-changes", {
-      added: (entries || []).map((e) => (typeof e === "string" ? e : e.word)),
-      removed: [],
+      add: (entries || []).map((e) => (typeof e === "string" ? e : e.word)),
+      remove: [],
     }),
-  deleteDictionaryEntry: (id) =>
-    ipcRenderer.invoke("db-apply-dictionary-changes", { added: [], removed: [id] }),
-  dragonImportPickFile: () => ipcRenderer.invoke("dragon-import-pick-file"),
-
+  deleteDictionaryEntry: (word) =>
+    ipcRenderer.invoke("db-apply-dictionary-changes", {
+      add: [],
+      remove: [word],
+    }),
   // Transcriptions (Local History)
-  saveTranscription: (item) => ipcRenderer.invoke("db-save-transcription", item),
+  saveTranscription: (text, rawText, options) =>
+    ipcRenderer.invoke("db-save-transcription", text, rawText, options),
   getTranscriptions: (limit, options) =>
     ipcRenderer.invoke("db-get-transcriptions", limit, options),
-  clearTranscriptions: (...args) =>
-    ipcRenderer.invoke("db-clear-transcriptions", ...args),
+  clearTranscriptions: (...args) => ipcRenderer.invoke("db-clear-transcriptions", ...args),
   clearAppData: () => ipcRenderer.invoke("clear-app-data"),
   deleteTranscription: (id) => ipcRenderer.invoke("db-delete-transcription", id),
   getTranscriptionById: (id) => ipcRenderer.invoke("get-transcription-by-id", id),
-  updateTranscriptionText: (id, text) =>
-    ipcRenderer.invoke("update-transcription-text", id, text),
+  updateTranscriptionText: (id, text, rawText) =>
+    ipcRenderer.invoke("update-transcription-text", id, text, rawText),
   onTranscriptionAdded: registerListener(
     "transcription-added",
     (callback) => (_event, item) => callback(item)
@@ -239,15 +221,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     "transcriptions-cleared",
     (callback) => () => callback()
   ),
-  saveTranscriptionAudio: (audioData, id) =>
-    ipcRenderer.invoke("save-transcription-audio", audioData, id),
-
   // GPU Info
   getGpuInfo: () => ipcRenderer.invoke("get-gpu-info"),
-
   // Media Playback control
-  pauseMediaPlayback: () => ipcRenderer.invoke("pause-media-playback"),
-  resumeMediaPlayback: () => ipcRenderer.invoke("resume-media-playback"),
 
   // Gnani Speech-to-Text
   gnaniTranscribe: (audioBuffer, options) =>
@@ -256,10 +232,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   gnaniTestKey: (key) => ipcRenderer.invoke("gnani:test-key", key),
   gnaniSaveKey: (key) => ipcRenderer.invoke("gnani:save-key", key),
   gnaniGetStatus: () => ipcRenderer.invoke("gnani:get-status"),
-
   // Logging & Platform
   getLogLevel: () => ipcRenderer.invoke("get-log-level"),
   log: (entry) => ipcRenderer.invoke("app-log", entry),
   sendDebugLog: (message) =>
-    ipcRenderer.send("app-log", { level: "debug", message }),
+    ipcRenderer.send("app-log", {
+      level: "debug",
+      message,
+    }),
 });

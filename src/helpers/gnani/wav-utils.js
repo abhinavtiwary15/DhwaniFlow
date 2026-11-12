@@ -34,7 +34,7 @@ function createWavHeader(dataLength, sampleRate = 16000, numChannels = 1, bitsPe
 
   header.write("fmt ", 12, "ascii");
   header.writeUInt32LE(16, 16); // fmt chunk size
-  header.writeUInt16LE(1, 20);  // PCM format
+  header.writeUInt16LE(1, 20); // PCM format
   header.writeUInt16LE(numChannels, 22);
   header.writeUInt32LE(sampleRate, 24);
   header.writeUInt32LE(byteRate, 28);
@@ -62,8 +62,8 @@ function validateWavHeader(inputBuffer) {
   const buffer = Buffer.isBuffer(inputBuffer)
     ? inputBuffer
     : ArrayBuffer.isView(inputBuffer)
-    ? Buffer.from(inputBuffer.buffer, inputBuffer.byteOffset, inputBuffer.byteLength)
-    : Buffer.from(inputBuffer);
+      ? Buffer.from(inputBuffer.buffer, inputBuffer.byteOffset, inputBuffer.byteLength)
+      : Buffer.from(inputBuffer);
 
   if (buffer.length < 44) {
     throw new WavValidationError("Buffer is too small to contain a valid WAV header", {
@@ -82,7 +82,7 @@ function validateWavHeader(inputBuffer) {
     });
   }
 
-  if (buffer.length > 44 && buffer.length < riffSize + 8) {
+  if (riffSize + 8 !== buffer.length) {
     throw new WavValidationError(
       `Corrupted WAV container: declared RIFF size ${riffSize} exceeds buffer length ${buffer.length}`,
       { riffSize, bufferLength: buffer.length }
@@ -104,8 +104,11 @@ function validateWavHeader(inputBuffer) {
   while (offset + 8 <= buffer.length) {
     const chunkId = buffer.toString("ascii", offset, offset + 4);
     const chunkSize = buffer.readUInt32LE(offset + 4);
+    if (offset + 8 + chunkSize + (chunkSize % 2) > buffer.length)
+      throw new WavValidationError("WAV chunk extends beyond container");
 
     if (chunkId === "fmt ") {
+      if (fmtFound) throw new WavValidationError("Duplicate WAV format chunk");
       if (offset + 8 + chunkSize > buffer.length || chunkSize < 16) {
         throw new WavValidationError("Corrupted or incomplete fmt chunk");
       }
@@ -117,16 +120,16 @@ function validateWavHeader(inputBuffer) {
       blockAlign = buffer.readUInt16LE(offset + 20);
       bitsPerSample = buffer.readUInt16LE(offset + 22);
     } else if (chunkId === "data") {
+      if (dataFound) throw new WavValidationError("Duplicate WAV data chunk");
       dataFound = true;
       dataOffset = offset + 8;
       dataSize = chunkSize;
-      if (buffer.length > 44 && dataOffset + dataSize > buffer.length) {
+      if (dataOffset + dataSize > buffer.length) {
         throw new WavValidationError(
           `Corrupted data chunk: declared size ${dataSize} exceeds actual buffer length (available: ${buffer.length - dataOffset})`,
           { declaredSize: dataSize, availableBytes: buffer.length - dataOffset }
         );
       }
-      break;
     }
 
     const paddedChunkSize = chunkSize + (chunkSize % 2);
@@ -181,7 +184,11 @@ function validateWavHeader(inputBuffer) {
     throw new WavValidationError("Missing data chunk in WAV file");
   }
 
-  if (buffer.length > 44 && buffer.length < dataOffset + dataSize) {
+  if (
+    offset !== buffer.length ||
+    dataSize % blockAlign !== 0 ||
+    buffer.length < dataOffset + dataSize
+  ) {
     throw new WavValidationError(
       `Corrupted data chunk: declared size ${dataSize} exceeds actual buffer length (available: ${buffer.length - dataOffset})`
     );
@@ -222,8 +229,6 @@ function isValid16kMonoWav(buffer) {
  * @returns {number}
  */
 function computeDuration(buffer) {
-  if (!buffer || buffer.length === 0) return 0;
-  if (buffer.length < 44) return 0;
   const meta = validateWavHeader(buffer);
   return meta.durationSeconds;
 }
@@ -242,8 +247,8 @@ function sliceWav(inputBuffer, startSec, endSec) {
   const buffer = Buffer.isBuffer(inputBuffer)
     ? inputBuffer
     : ArrayBuffer.isView(inputBuffer)
-    ? Buffer.from(inputBuffer.buffer, inputBuffer.byteOffset, inputBuffer.byteLength)
-    : Buffer.from(inputBuffer);
+      ? Buffer.from(inputBuffer.buffer, inputBuffer.byteOffset, inputBuffer.byteLength)
+      : Buffer.from(inputBuffer);
 
   const bytesPerSec = 32000; // 16000 * 1 * (16 / 8)
   const dataStart = meta.dataOffset;

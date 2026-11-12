@@ -1,97 +1,14 @@
-# Manual Test & Screenshot Capture Checklist
+# Windows release verification
 
-This document details the manual testing steps and visual asset capture requirements for DhwaniFlow. All screenshots must be saved as optimized PNG files under 300 KB in `docs/assets/`.
+Run these checks on the final installer, using an isolated profile and a local fake speech endpoint in development. Release builds pin the real speech origin; do not use live credentials during automation. A clean renderer build or mocked OS boundary is insufficient for native behavior.
 
----
+1. Build helpers from the checked-out C sources in an x64 Visual Studio Developer terminal. Run npm run dist:win. Inspect ASAR and unpacked resources for SQLite, keyring, helper binaries, fonts, command helper and license notices. Record installer size and hashes.
+2. Install in a clean Windows account or VM. Start both windows and observe for 60 seconds. Visit every page and complete onboarding through browser microphone permission, local-only key-format test and shortcut selection. Verify actual registration conflicts are visible.
+3. Against a loopback fake, record with the actual browser capture path. Inspect 16 kHz mono 16-bit WAV and request fields. Confirm returned text reaches a disposable editor, clipboard restoration is correct, and history retains raw text/status/options. Restart and verify settings, key status, dictionary and snippets.
+4. Test 401, both forms of 429, 500, offline, stalled body, redirect, empty response, silence and 27–31 second boundaries. After every error, confirm a second dictation works. Cancel an upload and verify no late paste. Verify double presses and queue limits.
+5. Exercise shortcut registration/change/unregister, tap versus push, Escape cancellation, microphone denial/no device/device removal, tray, window buttons, start minimized, placement and floating-icon behavior. Physical global hooks and focus behavior must be checked outside mocked boundaries.
+6. Test every visible setting across restart and both windows. Add/edit/delete/export dictionary and snippets; edit/delete/clear history. Disable history and test expiry. Confirm Delete All App Data, then verify local database, browser storage and saved key are reset and onboarding returns. Test cancellation of deletion separately.
+7. Inspect logs, profile files and renderer APIs for a randomly generated synthetic key without printing it. Observe five minutes of network activity across startup, onboarding and Settings. Permit only the configured local speech endpoint in the audit. Record refused attempts as well as successful connections.
+8. Verify native voice commands in disposable windows, including negation, named-app switching, helper failure, timeout and Escape. These checks can affect the foreground application; do not run them over a chat or production editor.
 
-## 1. Environment & Prerequisites
-
-1. **Clean Installation**:
-   - Run `npm install` and ensure all build targets are compiled (`npm run build:renderer`).
-   - Launch the application via `npm start`.
-2. **Display Configuration**:
-   - Window scaling: Standard 100% or high-DPI 200% (downsampled to 1x equivalent).
-   - Theme: Light mode or dark mode according to system default, ensuring high contrast.
-   - Screen bounds: Capture only the relevant application window or overlay panel without extraneous desktop background.
-3. **Optimization Target**:
-   - Output format: PNG (8-bit or 24-bit with alpha channel).
-   - File size ceiling: Under 300 KB per image.
-   - Optimization tools: Use `oxipng -o 4` or `pngquant --quality=80-95` to compress assets before committing.
-
----
-
-## 2. Screenshot Capture Checklist
-
-### View A: Home Dashboard
-- **Target File**: `docs/assets/home.png`
-- **Navigation**: Launch DhwaniFlow and navigate to the Home view.
-- **Verification Elements**:
-  - Left navigation sidebar showing exact items: **Home**, **Dictionary**, and **Settings** (General, Hotkeys, Speech, Privacy, System, About).
-  - Empty or sample dictation history with timestamps and language badges.
-  - Global hotkey indicator banner or tooltip displaying current dictation trigger.
-  - Title and branding showing "DhwaniFlow". No upstream branding or broken links.
-- **Framing**: Full main application window (recommended size: ~1024x720).
-
-### View B: Speech Settings (Gnani Integration)
-- **Target File**: `docs/assets/settings-speech.png`
-- **Navigation**: Click **Settings** in the sidebar -> Select **Speech** section (`speechToText`).
-- **Verification Elements**:
-  - Section header labeled **Speech**.
-  - Gnani API Key input with masking / show-hide toggle.
-  - "Test Connection" and "Save Key" action buttons.
-  - Status badge indicating configuration state (e.g., "Configured" or "Not configured").
-  - Gnani Speech Language dropdown displaying language choices with **Hindi / Hinglish (hi-IN)** selected as default.
-  - Audio input selection dropdown displaying available microphones.
-- **Framing**: Settings modal or settings page content area focused on Speech options.
-
-### View C: Dictation Overlay Panel
-- **Target File**: `docs/assets/dictation-panel.png`
-- **Navigation**: Trigger global dictation hotkey (e.g., `Ctrl+Space` or configured shortcut) while an active editor (VS Code, terminal, or text area) is focused.
-- **Verification Elements**:
-  - Compact floating HUD overlay centered or docked near the cursor/bottom.
-  - Live animated audio waveform reacting to microphone input.
-  - Streaming transcription preview showing Hinglish text (e.g., *"function createServer banao"*).
-  - Status/latency badge showing connection health.
-  - Stop/Finish action indicator.
-- **Framing**: Cropped overlay window with subtle drop shadow on dark or neutral background (~600x240).
-
-### View D: Onboarding Flow (Gnani Step)
-- **Target File**: `docs/assets/onboarding-gnani.png` (Optional supplementary asset)
-- **Navigation**: Trigger onboarding (`onboarding=true` or initial clean launch).
-- **Verification Elements**:
-  - Step progression: Step 2 of 3 (after Permissions, before Dictation Hotkey).
-  - Clean card container with title "Connect Gnani Speech Service".
-  - Secure API key input field with clear paste instructions.
-  - Language selection dropdown defaulting to `hi-IN`.
-  - Next / Continue navigation button.
-- **Framing**: Centered onboarding dialog modal (~640x520).
-
----
-
-## 3. Manual Functional Verification Steps
-
-### Test 1: Navigation Integrity
-- Click each sidebar link (**Home**, **Dictionary**, **Settings**).
-- Verify each settings section renders cleanly: **General**, **Hotkeys**, **Speech**, **Privacy**, **System**, **About**.
-- Verify no empty navigation groups, missing icons, or dead external links exist.
-- Verify Settings > About displays:
-  - DhwaniFlow version.
-  - MIT License notice.
-  - The exact attribution line: `"DhwaniFlow is built on OpenWhispr (MIT)"`.
-  - No broken or dead upstream links.
-
-### Test 2: Onboarding Flow Progression
-- Trigger onboarding view.
-- Step 1 (**Permissions**): Microphone and Accessibility checks render with Grant/Check buttons.
-- Step 2 (**Gnani Setup**): Input test key, verify validation button feedback, select language from dropdown, verify persistence.
-- Step 3 (**Hotkey Setup**): Record and save a global dictation shortcut.
-- Completion: Modal closes and transitions seamlessly to Home dashboard.
-
-### Test 3: Dictionary Management
-- Open **Dictionary** from sidebar.
-- Add sample Hinglish terminology / domain vocabulary (e.g., technical jargon, acronyms).
-- Verify entries persist and can be edited or deleted.
-
-### Test 4: Offline / Headless Fallback
-- Disconnect network and ensure app fails gracefully with user-friendly notification.
-- Verify app functions correctly when headless or when platform audio permissions are pending.
+Run typecheck, renderer build, lint, benchmark tests (using generated audio and local fake servers), retained tests, IPC checker and release-check. Record actual pass counts and every unavailable test. Do not turn unavailable checks into passes.

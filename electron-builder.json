@@ -73,18 +73,12 @@
     "!**/node_modules/**/CHANGELOG*",
     "!**/node_modules/**/.github/**"
   ],
-  "asarUnpack": [
-    "**/node_modules/better-sqlite3/**/*",
-    "**/node_modules/@napi-rs/keyring/**/*"
-  ],
+  "asarUnpack": ["**/node_modules/better-sqlite3/**/*", "**/node_modules/@napi-rs/keyring/**/*"],
   "extraResources": [
     {
       "from": "src/assets",
       "to": "src/assets",
-      "filter": [
-        "**/*",
-        "!fonts/yowza/**"
-      ]
+      "filter": ["**/*", "!fonts/yowza/**"]
     },
     {
       "from": "resources/bin/",
@@ -95,8 +89,9 @@
         "macos-window-bounds",
         "linux-fast-paste",
         "linux-key-listener*",
-        "windows-key-listener*",
-        "windows-fast-paste*",
+        "windows-key-listener.exe",
+        "windows-fast-paste.exe",
+        "windows-helpers.json",
         "*.dylib",
         "*.dll",
         "*.so*"
@@ -105,10 +100,7 @@
   ],
   "mac": {
     "category": "public.app-category.productivity",
-    "target": [
-      "dmg",
-      "zip"
-    ],
+    "target": ["dmg", "zip"],
     "icon": "src/assets/icon.icns",
     "gatekeeperAssess": false,
     "hardenedRuntime": true,
@@ -128,19 +120,12 @@
     }
   },
   "win": {
-    "target": [
-      "nsis"
-    ],
+    "target": ["nsis"],
     "icon": "src/assets/icon.ico",
     "forceCodeSigning": false
   },
   "linux": {
-    "target": [
-      "AppImage",
-      "deb",
-      "rpm",
-      "tar.gz"
-    ],
+    "target": ["AppImage", "deb", "rpm", "tar.gz"],
     "icon": "src/assets/icon.png",
     "category": "Utility",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
@@ -148,10 +133,7 @@
   "deb": {
     "afterInstall": "resources/linux/after-install.sh",
     "afterRemove": "resources/linux/after-remove.sh",
-    "depends": [
-      "ydotool",
-      "libpipewire-0.3-0"
-    ],
+    "depends": ["ydotool", "libpipewire-0.3-0"],
     "fpm": [
       "--deb-recommends",
       "ydotoold",

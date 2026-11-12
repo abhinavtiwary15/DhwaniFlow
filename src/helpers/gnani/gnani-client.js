@@ -13,10 +13,9 @@
  * - Absolute privacy: NEVER log API keys or transcripts
  */
 
-const { validateWavHeader, computeDuration } = require("./wav-utils");
+const { computeDuration } = require("./wav-utils");
 const { splitWav, joinTranscripts } = require("./chunker");
 const { mapLanguageCode } = require("./language-map");
-const { buildKeytermsPayload } = require("./keyterms");
 
 // Custom Typed Errors
 class GnaniError extends Error {
@@ -29,21 +28,30 @@ class GnaniError extends Error {
 }
 
 class GnaniNoKeyError extends GnaniError {
-  constructor(message = "Gnani API key is not configured. Please set your key in settings.", details = {}) {
+  constructor(
+    message = "Gnani API key is not configured. Please set your key in settings.",
+    details = {}
+  ) {
     super(message, "NO_KEY", details);
     this.name = "GnaniNoKeyError";
   }
 }
 
 class GnaniAuthError extends GnaniError {
-  constructor(message = "Invalid Gnani API key. Please check your API key in settings.", details = {}) {
+  constructor(
+    message = "Invalid Gnani API key. Please check your API key in settings.",
+    details = {}
+  ) {
     super(message, "BAD_KEY", details);
     this.name = "GnaniAuthError";
   }
 }
 
 class GnaniRateLimitError extends GnaniError {
-  constructor(message = "Gnani API rate limit exceeded (RATE_LIMITED). Please wait a moment and try again.", details = {}) {
+  constructor(
+    message = "Gnani API rate limit exceeded (RATE_LIMITED). Please wait a moment and try again.",
+    details = {}
+  ) {
     super(message, "RATE_LIMITED", details);
     this.name = "GnaniRateLimitError";
   }
@@ -57,14 +65,20 @@ class GnaniTimeoutError extends GnaniError {
 }
 
 class GnaniOfflineError extends GnaniError {
-  constructor(message = "Network connection error (OFFLINE). Please check your internet connection.", details = {}) {
+  constructor(
+    message = "Network connection error (OFFLINE). Please check your internet connection.",
+    details = {}
+  ) {
     super(message, "OFFLINE", details);
     this.name = "GnaniOfflineError";
   }
 }
 
 class GnaniAudioTooLongError extends GnaniError {
-  constructor(message = "Audio clip exceeds the maximum supported duration (AUDIO_TOO_LONG).", details = {}) {
+  constructor(
+    message = "Audio clip exceeds the maximum supported duration (AUDIO_TOO_LONG).",
+    details = {}
+  ) {
     super(message, "AUDIO_TOO_LONG", details);
     this.name = "GnaniAudioTooLongError";
   }
@@ -89,13 +103,14 @@ function isUnpackagedDevOrTest() {
 
 function validateAndResolveDestinationUrl(apiUrl) {
   const allowOverride = isUnpackagedDevOrTest();
-  let targetUrl = apiUrl || (allowOverride ? process.env.GNANI_API_URL : null) || DEFAULT_GNANI_API_URL;
+  let targetUrl =
+    apiUrl || (allowOverride ? process.env.GNANI_API_URL : null) || DEFAULT_GNANI_API_URL;
 
   let parsed;
   try {
     parsed = new URL(targetUrl);
   } catch {
-    throw new GnaniError(`Invalid Gnani API URL: ${targetUrl}`, "INVALID_URL");
+    throw new GnaniError("Invalid speech service destination", "INVALID_URL");
   }
 
   if (!allowOverride) {
@@ -116,18 +131,6 @@ function validateAndResolveDestinationUrl(apiUrl) {
   return parsed.toString();
 }
 
-// Keep-alive agent dispatcher
-let keepAliveDispatcher = null;
-try {
-  const { Agent } = require("undici");
-  keepAliveDispatcher = new Agent({
-    keepAliveTimeout: 60000,
-    keepAliveMaxTimeout: 120000,
-  });
-} catch {
-  // Undici not available, standard fetch with keepalive will be used
-}
-
 /**
  * Computes backoff duration for HTTP 429 response.
  * Honors Retry-After header capped at maxCapMs (default 10,000 ms = 10s).
@@ -135,10 +138,12 @@ try {
  */
 function compute429Backoff(retryAfterHeader, maxCapMs = 10000) {
   if (retryAfterHeader) {
-    const parsed = parseFloat(retryAfterHeader);
-    if (!Number.isNaN(parsed) && parsed > 0) {
+    const parsed = /^\d+(?:\.\d+)?$/.test(retryAfterHeader.trim()) ? Number(retryAfterHeader) : NaN;
+    if (!Number.isNaN(parsed) && parsed >= 0) {
       return Math.min(parsed * 1000, maxCapMs);
     }
+    const date = /^[A-Za-z]{3},/.test(retryAfterHeader) ? Date.parse(retryAfterHeader) : NaN;
+    if (!Number.isNaN(date)) return Math.min(Math.max(0, date - Date.now()), maxCapMs);
   }
   return 1000 + Math.floor(Math.random() * 500);
 }
@@ -160,7 +165,10 @@ class FifoQueue {
 
   checkCapacity(byteLength = 0) {
     if (this.pendingCount >= this.maxPendingJobs) {
-      throw new GnaniError("Speech service is busy. Too many pending transcription requests.", "QUEUE_FULL");
+      throw new GnaniError(
+        "Speech service is busy. Too many pending transcription requests.",
+        "QUEUE_FULL"
+      );
     }
     if (this.pendingBytes + (byteLength || 0) > this.maxPendingBytes) {
       throw new GnaniError("Speech service is busy. Audio byte ceiling exceeded.", "QUEUE_FULL");
@@ -179,12 +187,16 @@ class FifoQueue {
 
     if (signal) {
       if (signal.aborted) {
-        abortController.abort(signal.reason || new GnaniError("Transcription aborted by caller", "CANCELLED"));
+        abortController.abort(
+          signal.reason || new GnaniError("Transcription aborted by caller", "CANCELLED")
+        );
       } else {
         signal.addEventListener(
           "abort",
           () => {
-            abortController.abort(signal.reason || new GnaniError("Transcription aborted by caller", "CANCELLED"));
+            abortController.abort(
+              signal.reason || new GnaniError("Transcription aborted by caller", "CANCELLED")
+            );
           },
           { once: true }
         );
@@ -253,7 +265,10 @@ class FifoQueue {
     if (!requestId) return false;
 
     // Check if active job matches
-    if (this._activeJob && (this._activeJob.id === requestId || this._activeJob.id.startsWith(requestId + "_"))) {
+    if (
+      this._activeJob &&
+      (this._activeJob.id === requestId || this._activeJob.id.startsWith(requestId + "_"))
+    ) {
       const job = this._activeJob;
       job.status = "cancelled";
       const cancelErr = new GnaniError("Transcription request cancelled by user", "CANCELLED");
@@ -263,7 +278,9 @@ class FifoQueue {
     }
 
     // Check pending queue
-    const index = this._queue.findIndex((j) => j.id === requestId || j.id.startsWith(requestId + "_"));
+    const index = this._queue.findIndex(
+      (j) => j.id === requestId || j.id.startsWith(requestId + "_")
+    );
     if (index !== -1) {
       const [job] = this._queue.splice(index, 1);
       job.status = "cancelled";
@@ -297,8 +314,57 @@ const globalQueue = new FifoQueue();
 /**
  * Helper to pause execution for a given number of milliseconds.
  */
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    const abort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", abort);
+      reject(
+        signal.reason instanceof GnaniError
+          ? signal.reason
+          : new GnaniError("Transcription cancelled", "CANCELLED")
+      );
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
+
+async function readResponseBody(response) {
+  const limit = 1024 * 1024;
+  if (Number(response.headers?.get?.("content-length")) > limit) {
+    await response.body?.cancel();
+    throw new GnaniError("Speech response exceeded size limit", "RESPONSE_TOO_LARGE");
+  }
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    const text = await response.text();
+    if (Buffer.byteLength(text) > limit)
+      throw new GnaniError("Speech response exceeded size limit", "RESPONSE_TOO_LARGE");
+    return JSON.parse(text);
+  }
+  const chunks = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > limit) {
+        await reader.cancel();
+        throw new GnaniError("Speech response exceeded size limit", "RESPONSE_TOO_LARGE");
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return JSON.parse(Buffer.concat(chunks, bytes).toString("utf8"));
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /**
@@ -337,7 +403,9 @@ async function sendChunkRequest({
   if (signal) {
     if (signal.aborted) {
       clearTimeout(timeoutId);
-      throw signal.reason instanceof Error ? signal.reason : new GnaniTimeoutError("Transcription aborted by caller");
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new GnaniTimeoutError("Transcription aborted by caller");
     }
     const onAbort = () => {
       abortController.abort(signal.reason || new Error("Transcription aborted"));
@@ -379,10 +447,6 @@ async function sendChunkRequest({
       keepalive: true,
     };
 
-    if (keepAliveDispatcher) {
-      fetchOpts.dispatcher = keepAliveDispatcher;
-    }
-
     try {
       return await fetch(targetUrl, fetchOpts);
     } catch (err) {
@@ -422,18 +486,21 @@ async function sendChunkRequest({
 
     // Defense-in-depth redirect check
     if (response.status >= 300 && response.status < 400) {
-      throw new GnaniError(`Speech API redirect rejected (${response.status})`, "REDIRECT_NOT_ALLOWED");
+      throw new GnaniError(
+        `Speech API redirect rejected (${response.status})`,
+        "REDIRECT_NOT_ALLOWED"
+      );
     }
 
     // Retry once on HTTP 429 with jittered backoff, honoring Retry-After (capped at 10s)
     if (response.status === 429) {
       // Consume the first response body before retrying to free the connection
-      try { await response.text(); } catch {}
+      await response.body?.cancel();
 
       const retryAfterHeader = response.headers?.get?.("Retry-After");
       const backoffMs = compute429Backoff(retryAfterHeader, 10000);
 
-      await sleep(backoffMs);
+      await sleep(backoffMs, abortController.signal);
 
       if (signal?.aborted || abortController.signal.aborted) {
         throw new GnaniTimeoutError("Transcription aborted during retry backoff");
@@ -442,15 +509,16 @@ async function sendChunkRequest({
       response = await executeSingleAttempt();
 
       if (response.status >= 300 && response.status < 400) {
-        throw new GnaniError(`Speech API redirect rejected (${response.status})`, "REDIRECT_NOT_ALLOWED");
+        throw new GnaniError(
+          `Speech API redirect rejected (${response.status})`,
+          "REDIRECT_NOT_ALLOWED"
+        );
       }
     }
 
     if (!response.ok) {
       // Consume error body under the same timeout deadline
-      try {
-        await response.text();
-      } catch {}
+      await response.body?.cancel();
 
       const status = response.status;
       if (status === 401 || status === 403) {
@@ -474,14 +542,16 @@ async function sendChunkRequest({
     // Tolerant response parser: transcript, text, result.transcript.
     // response.json() runs under the same AbortController signal — body stall triggers timeout.
     try {
-      const data = await response.json();
+      const data = await readResponseBody(response);
       if (abortController.signal.aborted) {
         throw new GnaniTimeoutError();
       }
       const text = data.transcript ?? data.text ?? data.result?.transcript ?? "";
+      if (typeof text !== "string" || text.length > 128 * 1024)
+        throw new GnaniError("Invalid speech transcript", "RESPONSE_TOO_LARGE");
       return String(text).trim();
     } catch (err) {
-      if (err instanceof GnaniTimeoutError) throw err;
+      if (err instanceof GnaniError) throw err;
       if (abortController.signal.aborted) throw new GnaniTimeoutError();
       throw new GnaniError("Failed to parse speech response.", "PARSE_ERROR");
     }

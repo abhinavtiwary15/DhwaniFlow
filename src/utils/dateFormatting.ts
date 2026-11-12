@@ -73,10 +73,10 @@ export function formatRelativeTime(
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  if (minutes < 1) return t("notes.list.timeNow");
-  if (minutes < 60) return t("notes.list.minutesAgo", { count: minutes });
-  if (hours < 24) return t("notes.list.hoursAgo", { count: hours });
-  if (days < 7) return t("notes.list.daysAgo", { count: days });
+  if (minutes < 1) return t("transcript.historyTime.timeNow");
+  if (minutes < 60) return t("transcript.historyTime.minutesAgo", { count: minutes });
+  if (hours < 24) return t("transcript.historyTime.hoursAgo", { count: hours });
+  if (days < 7) return t("transcript.historyTime.daysAgo", { count: days });
   return formatShortDate(dateStr, locale);
 }
 

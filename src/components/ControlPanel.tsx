@@ -69,15 +69,12 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     [toast, t]
   );
 
-  const deleteTranscription = useCallback(
-    async (id: number) => {
-      removeFromStore(id);
-      if (window.electronAPI?.deleteTranscription) {
-        await window.electronAPI.deleteTranscription(id);
-      }
-    },
-    []
-  );
+  const deleteTranscription = useCallback(async (id: number) => {
+    removeFromStore(id);
+    if (window.electronAPI?.deleteTranscription) {
+      await window.electronAPI.deleteTranscription(id);
+    }
+  }, []);
 
   const clearAllTranscriptions = useCallback(async () => {
     clearStore();
@@ -93,6 +90,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
     setSettingsSection(section);
     setShowSettings(true);
   }, []);
+  useEffect(() => window.electronAPI.onOpenSettingsSection?.(openSettings), [openSettings]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background select-none">
@@ -109,9 +107,7 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <ControlPanelTopBar
           title={
-            activeTab === "home"
-              ? t("sidebar.home", "Home")
-              : t("sidebar.dictionary", "Dictionary")
+            activeTab === "home" ? t("sidebar.home", "Home") : t("sidebar.dictionary", "Dictionary")
           }
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -136,7 +132,13 @@ export default function ControlPanel({ initialSettingsSection }: ControlPanelPro
           )}
 
           {activeTab === "dictionary" && (
-            <Suspense fallback={<div className="p-8 text-xs text-muted-foreground">{t("common.loading", "Loading...")}</div>}>
+            <Suspense
+              fallback={
+                <div className="p-8 text-xs text-muted-foreground">
+                  {t("common.loading", "Loading...")}
+                </div>
+              }
+            >
               <DictionaryView />
             </Suspense>
           )}

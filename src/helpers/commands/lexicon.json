@@ -1,0 +1,430 @@
+{
+  "verbs": {
+    "open": [
+      "open",
+      "kholo",
+      "khol do",
+      "khol",
+      "open karo",
+      "open kar do",
+      "opan karo",
+      "chalu karo",
+      "chalu kar do",
+      "chalu",
+      "start karo",
+      "start kar do",
+      "start",
+      "shuru karo",
+      "kholee",
+      "khole",
+      "खोलो",
+      "खोल दो",
+      "ओपन करो",
+      "चालू करो",
+      "स्टार्ट करो"
+    ],
+    "close": [
+      "close",
+      "band karo",
+      "band kar do",
+      "close karo",
+      "close kar do",
+      "hatao",
+      "hata do",
+      "band",
+      "exit karo",
+      "quit karo",
+      "बंद करो",
+      "बंद कर दो",
+      "क्लोज करो",
+      "हटाओ",
+      "हटा दो"
+    ],
+    "switch": [
+      "switch",
+      "switch karo",
+      "switch kar do",
+      "jao",
+      "pe jao",
+      "par jao",
+      "go to",
+      "switch to",
+      "le chalo",
+      "जाओ",
+      "पे जाओ",
+      "पर जाओ",
+      "स्विच करो"
+    ],
+    "scroll_up": [
+      "scroll up",
+      "upar scroll karo",
+      "upar scroll",
+      "scroll upar",
+      "upar karo",
+      "upar jao",
+      "page up",
+      "ऊपर स्क्रोल करो",
+      "ऊपर स्क्रोल"
+    ],
+    "scroll_down": [
+      "scroll down",
+      "neeche scroll karo",
+      "niche scroll karo",
+      "neeche scroll",
+      "niche scroll",
+      "scroll neeche",
+      "scroll niche",
+      "neeche karo",
+      "niche karo",
+      "neeche jao",
+      "niche jao",
+      "page down",
+      "नीचे स्क्रोल करो",
+      "नीचे स्क्रोल"
+    ],
+    "louder": [
+      "awaaz badhao",
+      "awaz badhao",
+      "avaj barhao",
+      "avaj badhao",
+      "volume badhao",
+      "awaaz tez karo",
+      "awaz tez karo",
+      "volume up",
+      "louder",
+      "badhao",
+      "aawaz badhao",
+      "आवाज बढ़ाओ",
+      "आवाज़ बढ़ाओ",
+      "वॉल्यूम बढ़ाओ"
+    ],
+    "quieter": [
+      "awaaz kam karo",
+      "awaz kam karo",
+      "avaj kam karo",
+      "volume kam karo",
+      "awaaz dheere karo",
+      "awaz dheere karo",
+      "volume down",
+      "quieter",
+      "kam karo",
+      "aawaz kam karo",
+      "आवाज कम करो",
+      "आवाज़ कम करो",
+      "वॉल्यूम कम करो"
+    ],
+    "mute": [
+      "mute",
+      "mute karo",
+      "awaaz band karo",
+      "awaz band karo",
+      "avaj band karo",
+      "volume mute karo",
+      "silent karo",
+      "chup karo",
+      "aawaz band karo",
+      "म्यूट",
+      "म्यूट करो",
+      "आवाज बंद करो",
+      "चुप करो"
+    ],
+    "type": [
+      "likho",
+      "type karo",
+      "type kar do",
+      "type",
+      "write",
+      "लिखो",
+      "टाइप करो"
+    ],
+    "stop": [
+      "ruko",
+      "cancel",
+      "cancel karo",
+      "stop",
+      "bas karo",
+      "ruk jao",
+      "रुको",
+      "कैंसिल",
+      "कैंसिल करो",
+      "स्टॉप",
+      "बस करो"
+    ]
+  },
+  "apps": {
+    "chrome": [
+      "chrome",
+      "krom",
+      "browser",
+      "google chrome",
+      "web browser",
+      "internet",
+      "क्रोम",
+      "गूगल क्रोम",
+      "ब्राउज़र",
+      "ब्राउजर"
+    ],
+    "vscode": [
+      "vs code",
+      "visual studio code",
+      "code",
+      "vscode",
+      "vs",
+      "studio code",
+      "वीएस कोड",
+      "विजुअल स्टूडियो कोड",
+      "कोड"
+    ],
+    "notepad": [
+      "notepad",
+      "note pad",
+      "notpaid",
+      "notapaid",
+      "text editor",
+      "notes editor",
+      "नोटपैड"
+    ],
+    "calculator": [
+      "calculator",
+      "calc",
+      "kalkuleta",
+      "kailakuletar",
+      "hisaab",
+      "hisab",
+      "calculator app",
+      "कैलकुलेटर"
+    ],
+    "explorer": [
+      "explorer",
+      "file explorer",
+      "files",
+      "my computer",
+      "file manager",
+      "folder",
+      "eksplorar",
+      "एक्सप्लोरर",
+      "फाइल एक्सप्लोरर"
+    ],
+    "terminal": [
+      "terminal",
+      "cmd",
+      "powershell",
+      "command prompt",
+      "console",
+      "bash",
+      "shell",
+      "tarminal",
+      "tarminil",
+      "टर्मिनल",
+      "कमांड प्रॉम्प्ट"
+    ],
+    "settings": [
+      "settings",
+      "setting",
+      "preferences",
+      "control panel",
+      "system settings",
+      "setings",
+      "सेटिंग्स",
+      "सेटिंग"
+    ],
+    "spotify": [
+      "spotify",
+      "spotifay",
+      "spotifai",
+      "music player",
+      "gaane",
+      "gana",
+      "music",
+      "songs",
+      "स्पॉटिफ़ाई",
+      "स्पॉटिफाई"
+    ],
+    "whatsapp": [
+      "whatsapp",
+      "whats app",
+      "watsapp",
+      "wats app",
+      "vhatsaep",
+      "व्हाट्सएप",
+      "व्हाट्सऐप"
+    ],
+    "cursor": [
+      "cursor",
+      "cursor editor",
+      "cursor ai",
+      "karsar",
+      "कर्सर"
+    ],
+    "slack": [
+      "slack",
+      "slaik",
+      "slack app",
+      "स्लैक"
+    ]
+  },
+  "targets": {
+    "tab": [
+      "tab",
+      "taib",
+      "page",
+      "tab page",
+      "टैब"
+    ],
+    "new_tab": [
+      "new tab",
+      "naya tab",
+      "naya taib",
+      "naya tab kholo",
+      "fresh tab",
+      "new page",
+      "नया टैब"
+    ],
+    "next_tab": [
+      "next tab",
+      "agla tab",
+      "agala taib",
+      "agle tab",
+      "tab next",
+      "अगला टैब",
+      "अगले टैब"
+    ],
+    "previous_tab": [
+      "previous tab",
+      "prev tab",
+      "pichhla tab",
+      "pichhala taib",
+      "pichla tab",
+      "pichhle tab",
+      "pichle tab",
+      "back tab",
+      "पिछला टैब",
+      "पिछले टैब"
+    ],
+    "desktop": [
+      "desktop",
+      "deskatop",
+      "home screen",
+      "main screen",
+      "डेस्कटॉप"
+    ],
+    "window": [
+      "window",
+      "screen",
+      "app window",
+      "विंडो"
+    ],
+    "all": [
+      "all",
+      "sab",
+      "saara",
+      "sara",
+      "sab kuch",
+      "saara kuch",
+      "सब",
+      "सारा"
+    ]
+  },
+  "directions": {
+    "up": [
+      "up",
+      "upar",
+      "oopar",
+      "ऊपर"
+    ],
+    "down": [
+      "down",
+      "neeche",
+      "niche",
+      "नीचे"
+    ],
+    "left": [
+      "left",
+      "baayein",
+      "bayen",
+      "baye",
+      "बाएं",
+      "बायें"
+    ],
+    "right": [
+      "right",
+      "daayein",
+      "dayen",
+      "daye",
+      "दाएं",
+      "दायें"
+    ]
+  },
+  "keys": {
+    "enter": [
+      "enter",
+      "return",
+      "enter key",
+      "enter dabao",
+      "enter maro",
+      "एंटर"
+    ],
+    "escape": [
+      "escape",
+      "esc",
+      "escape key",
+      "escape dabao",
+      "एस्केप"
+    ],
+    "tab": [
+      "tab",
+      "tab key",
+      "tab dabao",
+      "टैब"
+    ],
+    "backspace": [
+      "backspace",
+      "back space",
+      "backspace key",
+      "backspace dabao",
+      "बैकस्पेस"
+    ]
+  },
+  "media_actions": {
+    "play_pause": [
+      "play",
+      "pause",
+      "play pause",
+      "gana chalao",
+      "gana roko",
+      "gana bajao",
+      "gana pause karo",
+      "music play",
+      "music pause",
+      "audio play",
+      "audio pause",
+      "गाना चलाओ",
+      "गाना रोको",
+      "प्ले",
+      "पॉज"
+    ],
+    "next": [
+      "next",
+      "next song",
+      "agla gana",
+      "agla track",
+      "next track",
+      "song next",
+      "track next",
+      "अगला गाना",
+      "अगला ट्रैक"
+    ],
+    "previous": [
+      "previous",
+      "prev",
+      "previous song",
+      "pichhla gana",
+      "pichla gana",
+      "prev song",
+      "previous track",
+      "pichhla track",
+      "पिछला गाना",
+      "पिछला ट्रैक"
+    ]
+  }
+}

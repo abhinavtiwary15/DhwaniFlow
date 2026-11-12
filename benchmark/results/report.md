@@ -1,5 +1,8 @@
 # DhwaniFlow STT Benchmark Report: Gnani Prisma vs Whisper
 
+> Historical measurements: raw result files and their SHA-256 manifest are retained under benchmark/results. Original recording hashes, provider configuration and collection provenance were not fully recorded. These reports do not establish current application latency or general superiority; historical Gnani median call time was roughly 4–5.5 seconds per clip, excluding capture.
+
+
 > [!NOTE]
 > **Dataset Dependency**: All test conditions (clean, phone8k, phone8k_noise) originate from the same 30 sentences and a single speaker, and are therefore not statistically independent.
 

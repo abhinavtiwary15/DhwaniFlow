@@ -1,0 +1,102 @@
+{
+  "kind": "historical-results",
+  "limitations": "Historical provider settings, original audio hashes and collection provenance were not recorded. These hashes identify retained result files only; they do not authenticate historical measurements.",
+  "files": [
+    {
+      "file": "gnani__codemix_kt__clean.json",
+      "sha256": "a5d3345e1320d543340b9fdbdf6510c166c49e83f3f249a968546ab1b31859b1"
+    },
+    {
+      "file": "gnani__codemix_kt__phone8k.json",
+      "sha256": "7554a610a6f07d1acfb4cfe5ae0138f7173a4452a8a601ea47efeca2e8a9ef6d"
+    },
+    {
+      "file": "gnani__codemix_kt__phone8k_noise.json",
+      "sha256": "5c956191e69b7ce71ede0020152e73d18634a1d12f3ce995a573108247ff6629"
+    },
+    {
+      "file": "gnani__transcribe_kt__clean.json",
+      "sha256": "13b6c8cdbdc6459f2d751a57c01205ea8cd8d35f7dce445552966da8c4e06da8"
+    },
+    {
+      "file": "gnani__transcribe_kt__phone8k.json",
+      "sha256": "0b419460274cfa47241cea2965d00fd808588644beb77944966ea0ca92eb508e"
+    },
+    {
+      "file": "gnani__transcribe_kt__phone8k_noise.json",
+      "sha256": "0fd399a63e05a6de0a0fc2f5c504fb7d2982546328aabb613a09cf99b6577ebd"
+    },
+    {
+      "file": "project_test__gnani__generic_kt__clean.json",
+      "sha256": "f25ada762e942bd547431cc1ce1728c62abb7ed21037c4165710185e86d818da"
+    },
+    {
+      "file": "project_test__gnani__project_kt__clean.json",
+      "sha256": "7fdec825f627809f1072e4949407d204998280ff1d139b0e764051a7198f26b9"
+    },
+    {
+      "file": "project_test__whisper-large-v3__whisper_generic_prompted__clean.json",
+      "sha256": "efd1f3da26757ef1d71fb398d496f1846ea4b364391bd0ef09b94f2eca8efa59"
+    },
+    {
+      "file": "project_test__whisper-large-v3__whisper_project_prompted__clean.json",
+      "sha256": "24235ca48cae8356fadd16c163320b9fcc46038d8154d31f710b2501cf9e7c09"
+    },
+    {
+      "file": "project_test__whisper-small__whisper_generic_prompted__clean.json",
+      "sha256": "7a55d36cfa719439bd9e48d517b60f3bd80239d398cfac7b0e82b2d0cc22ed52"
+    },
+    {
+      "file": "project_test__whisper-small__whisper_project_prompted__clean.json",
+      "sha256": "cd28d6d1797aae0ce0d6654db769a021deddc30cce6ff8d51a66f69f0c7272cb"
+    },
+    {
+      "file": "whisper-large-v3__whisper_plain__clean.json",
+      "sha256": "308f81580d7cf16ba04f4d7b99abd938fa625724c47aaffb0d0e218a7898bf1f"
+    },
+    {
+      "file": "whisper-large-v3__whisper_plain__phone8k.json",
+      "sha256": "b152cdc3902a84fb296c1d80987ec4f9627a646dcee9e5f9c1962583a67013f5"
+    },
+    {
+      "file": "whisper-large-v3__whisper_plain__phone8k_noise.json",
+      "sha256": "9b3f1a7cae29fe7334969208288a1e360e4f4dfdd949d9663361f5de8d0a5bae"
+    },
+    {
+      "file": "whisper-large-v3__whisper_prompted__clean.json",
+      "sha256": "643be03babfd091e2519b5f4329ce3840c67a2ce84e1cf15577e4620f353eaa6"
+    },
+    {
+      "file": "whisper-large-v3__whisper_prompted__phone8k.json",
+      "sha256": "4009a911b4ffd241bcde38c9b9b685b2861439d6d6d4992cd4ccc66bd248478e"
+    },
+    {
+      "file": "whisper-large-v3__whisper_prompted__phone8k_noise.json",
+      "sha256": "b437fe107fa6d27bc6773c621cce22c1703e9d31055903b099c47aa7e29076d2"
+    },
+    {
+      "file": "whisper__whisper_plain__clean.json",
+      "sha256": "f2805d57ebf9f16297ab2664ade3d5bba5da9f675bb5f9cdd569ec51b7b932b2"
+    },
+    {
+      "file": "whisper__whisper_plain__phone8k.json",
+      "sha256": "0e0ffcd1824f084a107e6ecc41cce3cf422e158ebae47090fd64454da6e44e86"
+    },
+    {
+      "file": "whisper__whisper_plain__phone8k_noise.json",
+      "sha256": "36ea31695e28ab393c8ff10472960fee58ded0cf5da801598ab314f1db0070b9"
+    },
+    {
+      "file": "whisper__whisper_prompted__clean.json",
+      "sha256": "15e0bdd18d3a71c73c62b9452a277eb7b7b7527539d8e258454cad9027fc6cf2"
+    },
+    {
+      "file": "whisper__whisper_prompted__phone8k.json",
+      "sha256": "b5a6e3c3c2f64def4ba365265fd2a4d36a2ad30473b797783d0468d6a36394e2"
+    },
+    {
+      "file": "whisper__whisper_prompted__phone8k_noise.json",
+      "sha256": "3a7e8cd1f992ee6210362f2f37dfbc7547e52db0d7f9d704b7825c8407a60c16"
+    }
+  ]
+}

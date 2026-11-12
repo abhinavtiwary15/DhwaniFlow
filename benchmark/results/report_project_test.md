@@ -1,5 +1,8 @@
 # DhwaniFlow Project-Vocabulary Benchmark Report
 
+> Historical measurements: raw result files and their SHA-256 manifest are retained under benchmark/results. Original recording hashes, provider configuration and collection provenance were not fully recorded. These reports do not establish current application latency or general superiority; historical Gnani median call time was roughly 4–5.5 seconds per clip, excluding capture.
+
+
 **Dataset**: 12 Hinglish developer sentences with 22 real repo code identifiers ([`sentences_project.json`](sentences_project.json))
 
 **Identifiers Tested**: 22 camelCase/PascalCase identifiers (n=22)

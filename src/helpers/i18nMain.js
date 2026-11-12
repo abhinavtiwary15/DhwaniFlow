@@ -12,18 +12,6 @@ const jaTranslation = require("../locales/ja/translation.json");
 const zhCNTranslation = require("../locales/zh-CN/translation.json");
 const zhTWTranslation = require("../locales/zh-TW/translation.json");
 
-const enPrompts = require("../locales/en/prompts.json");
-const arPrompts = require("../locales/ar/prompts.json");
-const esPrompts = require("../locales/es/prompts.json");
-const frPrompts = require("../locales/fr/prompts.json");
-const dePrompts = require("../locales/de/prompts.json");
-const ptPrompts = require("../locales/pt/prompts.json");
-const itPrompts = require("../locales/it/prompts.json");
-const ruPrompts = require("../locales/ru/prompts.json");
-const jaPrompts = require("../locales/ja/prompts.json");
-const zhCNPrompts = require("../locales/zh-CN/prompts.json");
-const zhTWPrompts = require("../locales/zh-TW/prompts.json");
-
 const SUPPORTED_UI_LANGUAGES = [
   "en",
   "ar",
@@ -72,52 +60,41 @@ void i18nMain.init({
   resources: {
     en: {
       translation: enTranslation,
-      prompts: enPrompts,
     },
     ar: {
       translation: arTranslation,
-      prompts: arPrompts,
     },
     es: {
       translation: esTranslation,
-      prompts: esPrompts,
     },
     fr: {
       translation: frTranslation,
-      prompts: frPrompts,
     },
     de: {
       translation: deTranslation,
-      prompts: dePrompts,
     },
     pt: {
       translation: ptTranslation,
-      prompts: ptPrompts,
     },
     it: {
       translation: itTranslation,
-      prompts: itPrompts,
     },
     ru: {
       translation: ruTranslation,
-      prompts: ruPrompts,
     },
     ja: {
       translation: jaTranslation,
-      prompts: jaPrompts,
     },
     "zh-CN": {
       translation: zhCNTranslation,
-      prompts: zhCNPrompts,
     },
     "zh-TW": {
       translation: zhTWTranslation,
-      prompts: zhTWPrompts,
     },
   },
   lng: normalizeUiLanguage(process.env.UI_LANGUAGE),
   fallbackLng: "en",
-  ns: ["translation", "prompts"],
+  ns: ["translation"],
   defaultNS: "translation",
   interpolation: {
     escapeValue: false,

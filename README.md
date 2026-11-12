@@ -1,144 +1,52 @@
 # DhwaniFlow
 
-DhwaniFlow is an open-source Hinglish voice dictation desktop app for developers, powered by the Gnani speech API. It captures technical speech, code syntax, and mixed Hindi-English instructions, transcribes them using Gnani's Indic foundation models, and pastes the result directly at your active cursor.
+DhwaniFlow is a Windows-first Electron app for recording Hindi-English speech, transcribing it through Gnani Prisma v3.0, and pasting the result into the focused application. DhwaniFlow is built on OpenWhispr (MIT) by its contributors. See LICENSE.
 
----
+## Current release status
 
-## Demo
+Release verification is in progress. A successful renderer build does not establish that a Windows installer, global shortcuts, or native paste work on a clean machine. Do not distribute an installer until the Windows checks in [the manual test guide](docs/manual-test.md) have passed.
 
-![DhwaniFlow Desktop Interface](docs/assets/home.png)
-*(DhwaniFlow desktop interface with real-time dictation, vocabulary management, and quick settings)*
+## Getting started
 
----
+Use Windows 10/11 x64. On first launch, grant browser microphone access, save a Gnani key, and select a shortcut. The default dictation shortcut is Control+Space, with push-to-talk enabled. Hold the shortcut, speak, and release to transcribe; tap mode is available in Settings. Check the shortcut displayed by the app because registration can fail or require a different activation mode.
 
-## Quick Start
+Saving a key requires OS-backed secure storage. The Test button checks its format locally; it does not authenticate it with Gnani. Authentication is established only by a successful transcription. The key stays in the main process and encrypted credential storage; saving fails if secure storage is unavailable.
 
-Windows 10/11 (64-bit) is the primary tested and supported platform.
+## Recording and privacy
 
-### 1. Download & Install
+The renderer captures audio with MediaRecorder and decodes and encodes it as 16 kHz, mono, 16-bit PCM WAV. The main process validates the container and sends it to https://api.vachana.ai/stt/v3. Requests are serialized with bounded pending work. A 429 receives one retry, using Retry-After when valid (capped at ten seconds), otherwise a jittered delay. Redirects are rejected. The request timeout includes reading the response body.
 
-- Download the latest installer (`DhwaniFlow-Setup-1.11.0.exe`) from [Releases](https://github.com/abhinavtiwary15/DhwaniFlow/releases), or build locally from source (`npm run build:win`).
-- Run the installer to set up DhwaniFlow on your Windows desktop.
+Long recordings are split into chunks no longer than 28 seconds, preferring silence around the boundary. Hard cuts have overlap. Recording is capped at approximately two minutes and bounded in memory. Cancellation suppresses late results. There is no live streaming transcript.
 
-### 2. Configure Your Gnani API Key
+Audio is held in memory for capture and transcription; the app does not intentionally write recordings to disk. References are released after processing or cancellation. JavaScript garbage collection and operating-system crash dumps prevent a guarantee of immediate secure erasure. Dictionary, snippets, and optional transcription history are stored locally in SQLite. Disabling history prevents new retained transcripts. Retention expiry runs at startup, periodically, and after saves. Delete All App Data requires confirmation and resets local data and credentials.
 
-1. Launch DhwaniFlow. On first launch, the Onboarding flow guides you through microphone permissions and Gnani setup.
-2. Alternatively, open **Settings** (`Ctrl+,`) and navigate to **Speech-to-Text**.
-3. Paste your Gnani Vachana API key and click **Save Key**. The key is encrypted locally using the operating system credential vault (`safeStorage` via Windows DPAPI).
-4. Choose your preferred dictation language (default: `Hindi (hi-IN)`).
+## Features and limits
 
-### 3. Native Fast-Paste Helper
+- Dictionary entries are sent as keyterms along with a bounded developer vocabulary. Keyterms are hints, not an accuracy guarantee.
+- Snippets replace configured triggers in returned dictation text.
+- Microphone choice, activation mode, clipboard behavior, local history retention, floating icon, and latency display are configurable.
+- Voice commands are an opt-in Windows preview. A fixed grammar selects bounded actions, with a confirmation delay and Escape cancellation. Negated commands are rejected. Native focus and permission constraints can still prevent an action.
+- Paste uses the Windows helper when available, with platform fallbacks. Elevated target windows may reject input. Clipboard restoration is awaited and failures are reported.
+- Notes, uploads, accounts, billing, meetings, AI agents, and alternative speech providers are outside this product.
 
-DhwaniFlow uses a compiled Windows fast-paste helper (`resources/bin/windows-fast-paste.exe`) for instantaneous cursor insertion. If compiling from source without a C compiler (`gcc` or MSVC `cl.exe`), DhwaniFlow transparently falls back to `nircmd.exe` or PowerShell clipboard pasting.
+## Latency and benchmark evidence
 
-### 4. Dictate Anywhere
+The historical single-speaker benchmark measured roughly 4–5.5 seconds median per clip for the Gnani call alone. This excludes recording time and does not establish interactive end-to-end latency. The latency badge measures processing elapsed time after capture; local fake-server measurements say nothing about production speech latency.
 
-1. Focus any code editor (VS Code, Cursor), terminal, or browser.
-2. Press the global dictation hotkey (default: `Ctrl+Shift+K`) to start recording.
-3. Speak in Hinglish (e.g., *"bhai useState hook banao with count and setCount"*).
-4. Press `Ctrl+Shift+K` again (or release in push-to-talk mode) to transcribe and paste directly into your active window.
+See [benchmark methodology](docs/benchmark-methodology.md) and the historical reports under benchmark/results. Raw results are retained with SHA-256 manifests. Historical provider configuration, original recording provenance, and unpublished audio cannot be reconstructed completely from those files. Small single-speaker results with wide confidence intervals do not establish superiority to Windows voice typing or general Hinglish accuracy.
 
----
+## Development and Windows packaging
 
-## How It Works
+Use Node 24 and the dependencies pinned in package-lock.json. Run npm run dev:renderer and NODE_ENV=development node scripts/run-electron.js --dev in separate terminals (PowerShell: set the NODE_ENV environment variable first).
 
-DhwaniFlow operates on a streamlined, two-tier architecture within Electron, with zero local server daemons and no external FFmpeg binary:
+For isolated speech tests only, GNANI_API_URL accepts a loopback endpoint in development. Packaged builds ignore the override and pin the HTTPS production origin. Never use a real key with a test server.
 
-```mermaid
-flowchart LR
-    Mic([Microphone]) -->|Spoken Audio| Renderer[Renderer Process]
-    Renderer -->|Web Audio API: 16 kHz Mono WAV| IPC[Electron IPC: gnaniTranscribe]
-    IPC --> MainProc[Main Process: src/helpers/gnani]
-    MainProc -->|FIFO Queue: Concurrency 1| HTTPS[HTTPS REST: api.vachana.ai]
-    HTTPS --> MainProc
-    MainProc -->|Transcript Text| Renderer
-    Renderer -->|Fast-Paste Helper| Editor[Active Editor / Terminal]
-```
+npm run dist:win first prepares both Windows native helpers. Build in a Visual Studio Developer terminal or with an x64 MinGW/LLVM C compiler. Alternatively supply DHWANIFLOW_NATIVE_ARTIFACT_DIR containing helpers and a windows-helpers.json manifest whose source and binary hashes match. The preparation step fails without valid artifacts; it does not download binaries. Artifact provenance must be established by the release builder in addition to hash validation.
 
-1. **In-Browser Audio Encoding**: The renderer captures microphone input via the Web Audio API and encodes it directly into a standard 16 kHz 16-bit mono PCM WAV buffer (`src/audio/wav-encoder.js`). No external FFmpeg binary or local transcoding daemon is needed.
-2. **Typed Electron IPC**: Audio buffers and configuration are passed to Electron's main process via typed IPC (`gnani:transcribe`).
-3. **In-Process Gnani Module**: The main process (`src/helpers/gnani/`) handles request serialization (strict concurrency 1 via `FifoQueue`), automatic HTTP 429 exponential backoff, custom vocabulary biasing, and RMS energy-based silence chunking for audio exceeding 30 seconds.
-4. **Direct HTTPS Transmission**: Audio buffers are delivered securely over HTTPS to Gnani's Vachana STT endpoint (`https://api.vachana.ai/stt/v3`).
-5. **Cursor Insertion**: The received transcript is typed or pasted at the active cursor using the native fast-paste helper, after which temporary audio buffers are immediately revoked.
+Public Windows releases use npm run dist:win:release, which requires code signing. The tag build expects WINDOWS_SIGNING_CERTIFICATE and WINDOWS_SIGNING_PASSWORD in the repository's protected secret configuration, verifies trusted executable signatures, and runs the packaged startup gate before uploading an installer. Keep certificate material outside the repository. The unsigned development command remains available for local diagnostics.
 
----
+Run npm run typecheck, npm run build:renderer, npm run lint, npm run benchmark:test, node scripts/run-retained-tests.mjs, npm run ipc:check, and node scripts/release-check.mjs. After building on Windows, npm run test:release:win must pass against the actual packaged application; CI requires it before uploading an installer. This startup gate uses a fresh profile, a rejecting network proxy and no API credential. Test the resulting installer and physical hotkey/paste behavior in a fresh Windows profile before release. An unsigned local build is not a signed public release.
 
-## Features
+## License
 
-- **Hinglish-First Dictation**: Optimized for code-mixed Hindi-English technical speech and developer workflows.
-- **Zero-Daemon Architecture**: Fully in-process speech pipeline—no background local servers, Python daemons, or FFmpeg runtime requirements.
-- **Global Hotkey & Fast-Paste**: Global shortcuts (`Ctrl+Shift+K`) with instant focus restoration and native keyboard paste automation.
-- **Indic Foundation Models**: Powered by Gnani Prisma v3.0 Speech-to-Text supporting Hindi and 11+ Indic languages.
-- **Custom Dictionary & Vocabulary Biasing**: Injects developer terms, function names, and custom identifiers into STT keyterms.
-- **Local-First Security**: API keys are encrypted with Windows DPAPI via Electron's `safeStorage`; no telemetry or account tracking.
-- **Audio Silence Segmentation**: Non-destructive RMS energy silence splitting with boundary deduplication for long dictations.
-
----
-
-## Project Vocabulary Biasing
-
-To accurately recognize technical jargon, library names, and camelCase identifiers in Hinglish speech, DhwaniFlow primes Gnani's foundation model with contextual vocabulary:
-- **Custom Dictionary**: User-defined words and domain terms from the Dictionary view are prioritized.
-- **Developer Vocabulary**: Standard programming keywords and common developer terms (`src/helpers/gnani/data/dev-terms.json`) complement user entries.
-- **Payload Budgeting**: Terms are sanitized, deduplicated case-insensitively, and budgeted to Gnani's maximum payload limit of 200 terms and 2,000 characters.
-- *(Note: Full automated workspace AST scanning is documented in [docs/known-gaps.md](docs/known-gaps.md) as an unfinished internal helper; user-configured dictionary terms are actively delivered to Gnani on every dictation).*
-
----
-
-## Benchmark Summary
-
-Hinglish speech recognition performance evaluated across 30 developer sentences and 3 acoustic conditions (Gnani Prisma v3.0 vs OpenAI Whisper):
-
-<!-- BENCHMARK_TABLE_START -->
-
-| Audio Condition | Gnani (All / Held-out) | Whisper large-v3 (Prompted - All / Held-out) | Delta Overall | Delta Held-Out | 95% Bootstrap CI (Overall) | 95% Bootstrap CI (Held-out) |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **`clean`** | 85.3% / 88.3% | 80.2% / 79.0% | **+5.2%** | **+9.3%** | [-6.9%, +17.2%] | [-5.6%, +24.1%] |
-| **`phone8k`** | 86.2% / 88.3% | 81.0% / 84.6% | **+5.2%** | **+3.7%** | [-6.0%, +16.4%] | [-7.4%, +14.8%] |
-| **`phone8k_noise`** | 85.3% / 86.4% | 73.8% / 75.3% | **+11.5%** | **+11.1%** | [+2.6%, +23.6%] | [+0.0%, +25.9%] |
-
-<!-- BENCHMARK_TABLE_END -->
-
-See [docs/benchmark-methodology.md](docs/benchmark-methodology.md) for benchmark setup, dataset details, and evaluation protocols.
-
----
-
-## Limitations
-
-- **Single Speaker**: Benchmark audio recordings were gathered from a single male native Hindi speaker. Regional accent diversity testing is planned.
-- **Dataset Size**: The core evaluation dataset comprises 30 developer sentences, resulting in wide bootstrap confidence intervals.
-- **Derived Conditions**: Clean, telephony (8 kHz bandpass), and noise conditions were derived synthetically from identical source recordings and are not statistically independent.
-- **Synthetic Noise and Telephony**: Phone degradation was synthesized with G.711 $\mu$-law filtering, and noise was digitally added from synthetic babble/traffic audio.
-- **Whisper Reference**: Whisper `large-v3` was evaluated locally on CPU with int8 quantization (`whisper.cpp`).
-- **Single Request Concurrency**: Gnani API keys enforce a limit of 1 active in-flight request at a time; consecutive requests are serialized in a FIFO queue.
-- **Cloud Latency**: Speech recognition requires an external HTTPS round-trip to `api.vachana.ai` (typically 2 to 5 seconds depending on audio duration and network latency).
-- **Project Identifier Biasing**: When project identifiers were given to both engines as hints, Whisper `large-v3` performed better than Prisma on exact token matches (72.7% for Whisper vs 22.7% for Prisma, $n = 22$ identifiers).
-
----
-
-## Project Layout
-
-```text
-DhwaniFlow/
-├── benchmark/            # Benchmark datasets, evaluation runners, and results
-├── docs/                 # Architecture, known gaps, methodology, and assets
-│   └── assets/           # Screenshots and interface diagrams
-├── resources/            # Icons, Windows installer scripts (NSIS), native paste C source
-├── scripts/              # CI test runner, release packaging, hygiene validation
-├── src/                  # Main and renderer application source code
-│   ├── audio/            # Web Audio 16 kHz PCM WAV encoder
-│   ├── components/       # React UI (Control Panel, Onboarding, Settings)
-│   ├── config/           # Application constants and configuration
-│   ├── helpers/
-│   │   └── gnani/        # In-process Gnani STT client, queue, keyterms, silence chunker
-│   ├── locales/          # UI localization files (English and community locales)
-│   ├── stores/           # Zustand state management stores
-│   └── types/            # TypeScript type definitions and IPC interfaces
-└── test/                 # Retained unit and integration test suites
-```
-
----
-
-## Credits
-
-DhwaniFlow is built on OpenWhispr (MIT) by its contributors. See LICENSE.
+MIT; see LICENSE and THIRD_PARTY_NOTICES.md for upstream, dependency, and bundled font attribution.

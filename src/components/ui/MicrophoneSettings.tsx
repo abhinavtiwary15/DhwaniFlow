@@ -77,7 +77,7 @@ export const MicrophoneSettings: React.FC<MicrophoneSettingsProps> = ({
       ) {
         onDeviceSelect(resolvedSelection.device.deviceId, resolvedSelection.device.label);
       }
-      const nativeDefault = await window.electronAPI?.getSystemDefaultMicrophone?.();
+      const nativeDefault = null;
       const resolvedDefault = resolveSystemDefaultMicDevice(audioInputs, nativeDefault);
       setSystemDefaultLabel(nativeDefault?.name || resolvedDefault.device?.label || "");
     } catch {

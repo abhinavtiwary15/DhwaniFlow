@@ -25,6 +25,9 @@ function MainApp() {
     const onboardingCompleted = localStorage.getItem("onboardingCompleted") === "true";
     if (isControlPanel && !onboardingCompleted) {
       setShowOnboarding(true);
+      window.electronAPI?.setOnboardingActive?.(true);
+    } else if (onboardingCompleted) {
+      window.electronAPI?.setOnboardingActive?.(false);
     }
     setIsLoading(false);
   }, [isControlPanel]);
@@ -35,6 +38,7 @@ function MainApp() {
     }
     setShowOnboarding(false);
     localStorage.setItem("onboardingCompleted", "true");
+    window.electronAPI?.setOnboardingActive?.(false);
   };
 
   if (isLoading) {

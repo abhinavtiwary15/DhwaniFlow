@@ -34,18 +34,21 @@ const readArgLogLevel = () => {
 
 const hasConsoleLogOptIn = () => (process.argv || []).includes("--console-logs");
 
-const SENSITIVE_KEY_REGEX = /^(?:gnani)?[_-]?(?:api[_-]?key|secret|token|password|authorization|x-api-key(?:-id)?|client[_-]?secret|access[_-]?token)$/i;
+const SENSITIVE_KEY_REGEX =
+  /^(?:gnani)?[_-]?(?:api[_-]?key|secret|token|password|authorization|x-api-key(?:-id)?|client[_-]?secret|access[_-]?token)$/i;
 
 const TOKEN_PATTERNS = [
-  /Bearer\s+[A-Za-z0-9_\-\.]{10,}/gi,
-  /\b(?:sk|gnani|vachana|key)[_-][A-Za-z0-9_\-]{8,}\b/gi,
+  /Bearer\s+[A-Za-z0-9_.-]{10,}/gi,
+  /\b(?:sk|gnani|vachana|key)[_-][A-Za-z0-9_-]{8,}\b/gi,
   /X-API-Key(?:-ID)?:\s*[^\s,;]+/gi,
-  /(api[_-]?key|secret|password|token)\s*[:=]\s*["']?[A-Za-z0-9_\-]{8,}["']?/gi,
+  /(api[_-]?key|secret|password|token)\s*[:=]\s*["']?[A-Za-z0-9_-]{8,}["']?/gi,
 ];
+const configuredSecrets = new Set();
 
 function redactString(str) {
   if (typeof str !== "string" || !str) return str;
   let result = str;
+  for (const secret of configuredSecrets) result = result.split(secret).join("[REDACTED]");
 
   // Stored environment API key
   const envKey = process.env.GNANI_API_KEY;
@@ -266,7 +269,8 @@ class DebugLogger {
       this.initializeFileLogging();
     }
 
-    const sanitizedMessage = typeof message === "string" ? redactString(message) : redactValue(message);
+    const sanitizedMessage =
+      typeof message === "string" ? redactString(message) : redactValue(message);
     const sanitizedMeta = meta !== undefined ? redactValue(meta) : undefined;
 
     const timestamp = new Date().toISOString();
@@ -509,5 +513,12 @@ class DebugLogger {
 
 // Singleton instance
 const debugLogger = new DebugLogger();
+debugLogger.registerSecret = (value) => {
+  if (typeof value === "string" && value.length >= 8) {
+    configuredSecrets.add(value);
+    while (configuredSecrets.size > 16)
+      configuredSecrets.delete(configuredSecrets.values().next().value);
+  }
+};
 
 module.exports = debugLogger;

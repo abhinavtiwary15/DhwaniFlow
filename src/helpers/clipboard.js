@@ -1059,7 +1059,11 @@ class ClipboardManager {
       } else if (!fastPasteHoldsTranscript) {
         clipboard.writeText(text);
       }
-      this.safeLog("📋 Text copied to clipboard:", text.substring(0, 50) + "...");
+      this.safeLog("📋 Text copied to clipboard", {
+        length: text.length,
+        method,
+        elapsedMs: Date.now() - startTime,
+      });
 
       let pasteResult = { restoreComplete: Promise.resolve() };
 
@@ -1166,15 +1170,27 @@ class ClipboardManager {
 
     return new Promise((resolve, reject) => {
       setTimeout(() => {
-        const pasteProcess = useFastPaste
-          ? spawn(
-              fastPasteBinary,
-              session ? ["--await-read", String(PASTE_READ_BUDGET_MS), "--session", session] : []
-            )
-          : spawn("osascript", [
-              "-e",
-              'tell application "System Events" to key code 9 using command down',
-            ]);
+        let pasteProcess;
+        try {
+          pasteProcess = useFastPaste
+            ? spawn(
+                fastPasteBinary,
+                session ? ["--await-read", String(PASTE_READ_BUDGET_MS), "--session", session] : []
+              )
+            : spawn("osascript", [
+                "-e",
+                'tell application "System Events" to key code 9 using command down',
+              ]);
+        } catch (spawnError) {
+          if (originalClipboard != null) {
+            this._restoreClipboardAfterDelay(originalClipboard, {
+              delayMs: 0,
+              expectedText: text,
+            }).catch(() => {});
+          }
+          reject(spawnError);
+          return;
+        }
 
         let output = "";
         let errorOutput = "";
@@ -1418,10 +1434,32 @@ class ClipboardManager {
 
         this.safeLog("⚡ Windows fast-paste starting", { targetWindow: options.targetWindow });
 
-        const pasteProcess = spawn(fastPastePath, args, {
-          stdio: ["ignore", "pipe", "pipe"],
-          windowsHide: true,
-        });
+        let pasteProcess;
+        try {
+          pasteProcess = spawn(fastPastePath, args, {
+            stdio: ["ignore", "pipe", "pipe"],
+            windowsHide: true,
+          });
+        } catch (spawnError) {
+          this.safeLog("❌ Windows fast-paste spawn error, falling back to nircmd/PowerShell", {
+            elapsedMs: Date.now() - startTime,
+            error: spawnError.message,
+          });
+          this.pasteWithNircmdOrPowerShell(originalClipboard, options)
+            .then(resolve)
+            .catch(async (fallbackError) => {
+              if (originalClipboard != null) {
+                try {
+                  await this._restoreClipboardAfterDelay(originalClipboard, {
+                    delayMs: 0,
+                    expectedText: options.expectedClipboardText,
+                  });
+                } catch {}
+              }
+              reject(fallbackError);
+            });
+          return;
+        }
 
         let stdoutData = "";
         let stderrData = "";
@@ -1507,9 +1545,31 @@ class ClipboardManager {
 
         this.safeLog(`⚡ nircmd paste starting (delay: ${pasteDelay}ms)`);
 
-        const pasteProcess = spawn(nircmdPath, ["sendkeypress", "ctrl+v"], {
-          windowsHide: true,
-        });
+        let pasteProcess;
+        try {
+          pasteProcess = spawn(nircmdPath, ["sendkeypress", "ctrl+v"], {
+            windowsHide: true,
+          });
+        } catch (spawnError) {
+          this.safeLog(`❌ nircmd spawn error, falling back to PowerShell`, {
+            elapsedMs: Date.now() - startTime,
+            error: spawnError.message,
+          });
+          this.pasteWithPowerShell(originalClipboard, options)
+            .then(resolve)
+            .catch(async (fallbackError) => {
+              if (originalClipboard != null) {
+                try {
+                  await this._restoreClipboardAfterDelay(originalClipboard, {
+                    delayMs: 0,
+                    expectedText: options.expectedClipboardText,
+                  });
+                } catch {}
+              }
+              reject(fallbackError);
+            });
+          return;
+        }
 
         let errorOutput = "";
 
@@ -1581,20 +1641,47 @@ class ClipboardManager {
 
         this.safeLog(`🪟 PowerShell paste starting (delay: ${pasteDelay}ms)`);
 
-        const pasteProcess = spawn(
-          "powershell.exe",
-          [
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.SendKeys]::SendWait('^v')",
-          ],
-          { windowsHide: true }
-        );
+        let pasteProcess;
+        try {
+          pasteProcess = spawn(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-WindowStyle",
+              "Hidden",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-Command",
+              "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.SendKeys]::SendWait('^v')",
+            ],
+            { windowsHide: true }
+          );
+        } catch (spawnError) {
+          const elapsed = Date.now() - startTime;
+          this.safeLog(`❌ PowerShell spawn error`, {
+            elapsedMs: elapsed,
+            error: spawnError.message,
+          });
+          const settleReject = () => {
+            reject(
+              new Error(
+                `Windows paste failed: ${spawnError.message}. Text is copied to clipboard - please paste manually with Ctrl+V.`
+              )
+            );
+          };
+          if (originalClipboard != null) {
+            this._restoreClipboardAfterDelay(originalClipboard, {
+              delayMs: 0,
+              expectedText: options.expectedClipboardText,
+            })
+              .catch(() => {})
+              .finally(settleReject);
+          } else {
+            settleReject();
+          }
+          return;
+        }
 
         let errorOutput = "";
 
@@ -2227,7 +2314,12 @@ class ClipboardManager {
             "clipboard"
           );
 
-          const proc = spawn(tool.cmd, tool.args);
+          let proc;
+          try {
+            proc = spawn(tool.cmd, tool.args);
+          } catch (spawnError) {
+            return reject(spawnError);
+          }
           let stderr = "";
           let stdout = "";
 

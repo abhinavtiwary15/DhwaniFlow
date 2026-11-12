@@ -2,21 +2,13 @@ import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import {
-  Sliders,
-  Mic,
-  Shield,
-  Wrench,
-  Keyboard,
-  Info,
-  Trash2,
-  Cpu,
-  Check,
-} from "./icons";
+import { Sliders, Mic, Shield, Wrench, Keyboard, Info, Trash2, Cpu, Check } from "./icons";
 import { useSettings } from "../hooks/useSettings";
 import { SettingsSection, SettingsRow } from "./ui/SettingsSection";
 import MicrophoneSettings from "./ui/MicrophoneSettings";
 import HotkeyInput from "./ui/HotkeyInput";
+import { useToast } from "./ui/useToast";
+import { useHotkeyRegistration } from "../hooks/useHotkeyRegistration";
 import type { SettingsSectionType } from "../lib/settingsNav";
 import type { GpuInfo } from "../types/electron";
 
@@ -27,6 +19,20 @@ interface SettingsPageProps {
 export default function SettingsPage({ section }: SettingsPageProps) {
   const { t } = useTranslation();
   const settings = useSettings();
+  const { toast } = useToast();
+
+  const {
+    registerHotkey,
+    lastError: hotkeyError,
+    clearError,
+  } = useHotkeyRegistration({
+    onSuccess: (val) => {
+      settings.setDictationKey(val);
+    },
+    showAlert: ({ title, description }) => {
+      toast({ title, description, variant: "destructive" });
+    },
+  });
 
   const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
@@ -34,23 +40,36 @@ export default function SettingsPage({ section }: SettingsPageProps) {
 
   const [isKeyConfigured, setIsKeyConfigured] = useState(false);
   const [keyInput, setKeyInput] = useState("");
-  const [keyFeedback, setKeyFeedback] = useState<{ status?: string; message?: string; error?: string } | null>(null);
+  const [keyFeedback, setKeyFeedback] = useState<{
+    status?: string;
+    message?: string;
+    error?: string;
+  } | null>(null);
   const [isSavingKey, setIsSavingKey] = useState(false);
   const [isTestingKey, setIsTestingKey] = useState(false);
 
   useEffect(() => {
     if (window.electronAPI?.getGpuInfo) {
-      window.electronAPI.getGpuInfo().then(setGpuInfo).catch(() => {});
+      window.electronAPI
+        .getGpuInfo()
+        .then(setGpuInfo)
+        .catch(() => {});
     }
     if (window.electronAPI?.getAppVersion) {
-      window.electronAPI.getAppVersion().then((v) => {
-        setAppVersion(typeof v === "string" ? v : v.version || "");
-      }).catch(() => {});
+      window.electronAPI
+        .getAppVersion()
+        .then((v) => {
+          setAppVersion(typeof v === "string" ? v : v.version || "");
+        })
+        .catch(() => {});
     }
     if (window.electronAPI?.gnaniGetStatus) {
-      window.electronAPI.gnaniGetStatus().then((status) => {
-        setIsKeyConfigured(Boolean(status?.configured));
-      }).catch(() => {});
+      window.electronAPI
+        .gnaniGetStatus()
+        .then((status) => {
+          setIsKeyConfigured(Boolean(status?.configured));
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -160,21 +179,6 @@ export default function SettingsPage({ section }: SettingsPageProps) {
             </SettingsRow>
 
             <SettingsRow
-              label={t("settings.general.pauseMedia", "Pause media during dictation")}
-              description={t(
-                "settings.general.pauseMediaDesc",
-                "Automatically pause background music or video playback while recording."
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={settings.pauseMediaOnDictation}
-                onChange={(e) => settings.setPauseMediaOnDictation(e.target.checked)}
-                className="rounded border-border"
-              />
-            </SettingsRow>
-
-            <SettingsRow
               label={t("settings.general.startMinimized", "Start minimized")}
               description={t(
                 "settings.general.startMinimizedDesc",
@@ -185,21 +189,6 @@ export default function SettingsPage({ section }: SettingsPageProps) {
                 type="checkbox"
                 checked={settings.startMinimized}
                 onChange={(e) => settings.setStartMinimized(e.target.checked)}
-                className="rounded border-border"
-              />
-            </SettingsRow>
-
-            <SettingsRow
-              label={t("settings.general.autoLearn", "Auto-learn corrections")}
-              description={t(
-                "settings.general.autoLearnDesc",
-                "Automatically add your manual corrections into the personal dictionary."
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={settings.autoLearnCorrections}
-                onChange={(e) => settings.setAutoLearnCorrections(e.target.checked)}
                 className="rounded border-border"
               />
             </SettingsRow>
@@ -231,7 +220,10 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               {t("settings.hotkeys.title", "Hotkeys")}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {t("settings.hotkeys.description", "Customize global keyboard shortcuts and recording mode.")}
+              {t(
+                "settings.hotkeys.description",
+                "Customize global keyboard shortcuts and recording mode."
+              )}
             </p>
           </div>
 
@@ -239,8 +231,14 @@ export default function SettingsPage({ section }: SettingsPageProps) {
             <div className="py-2">
               <HotkeyInput
                 value={settings.dictationKey}
-                onChange={(val) => settings.setDictationKey(val)}
+                onChange={async (val) => {
+                  clearError();
+                  await registerHotkey(val);
+                }}
               />
+              {hotkeyError && (
+                <p className="text-xs text-destructive mt-1.5 font-medium">{hotkeyError}</p>
+              )}
             </div>
 
             <SettingsRow
@@ -276,6 +274,84 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               </div>
             </SettingsRow>
           </SettingsSection>
+
+          <SettingsSection title={t("settings.commands.title", "Voice Command Mode")}>
+            <SettingsRow
+              label={t("settings.commands.enable", "Enable Command Mode")}
+              description={t(
+                "settings.commands.enableDesc",
+                "Control apps, windows, browser tabs, media, and text using natural Hinglish voice commands."
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={settings.commandModeEnabled}
+                onChange={(e) => settings.setCommandModeEnabled(e.target.checked)}
+                className="rounded border-border"
+              />
+            </SettingsRow>
+
+            {settings.commandModeEnabled && (
+              <>
+                <div className="py-2">
+                  <span className="text-xs font-medium text-foreground">
+                    {t("settings.commands.hotkey", "Command Shortcut")}
+                  </span>
+                  <p className="text-[11px] text-muted-foreground mb-2">
+                    {t(
+                      "settings.commands.hotkeyDesc",
+                      "Hold or press this shortcut while speaking your command."
+                    )}
+                  </p>
+                  <HotkeyInput
+                    value={settings.commandKey}
+                    onChange={(val) => settings.setCommandKey(val)}
+                  />
+                </div>
+
+                <div className="mt-4 rounded-xl border border-border/70 bg-card/40 p-4 space-y-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                    <span>{t("settings.commands.catalogTitle", "Supported Commands")}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    {t(
+                      "settings.commands.catalogDesc",
+                      "Commands are matched deterministically against a safe, fixed grammar. Arbitrary system commands and shell scripts are never executed."
+                    )}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
+                      <span className="font-semibold text-foreground">Apps & Windows</span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        "Chrome kholo", "VS Code band karo", "minimize karo", "maximize karo", "left
+                        snap karo", "desktop dikhao"
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
+                      <span className="font-semibold text-foreground">Browser Tabs</span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        "Naya tab kholo", "tab band karo", "agla tab", "pichhla tab"
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
+                      <span className="font-semibold text-foreground">Media & Volume</span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        "Aawaz badhao", "aawaz kam karo", "mute karo", "gana roko", "gana chalao",
+                        "agla gana"
+                      </p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-background/50 border border-border/40">
+                      <span className="font-semibold text-foreground">Edit & Text</span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        "Copy karo", "paste karo", "undo karo", "sab select karo", "type karo
+                        &lt;text&gt;"
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </SettingsSection>
         </div>
       )}
 
@@ -288,7 +364,10 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               {t("settings.speech.title", "Speech")}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {t("settings.speech.description", "Gnani Hinglish voice dictation engine configuration.")}
+              {t(
+                "settings.speech.description",
+                "Gnani Hinglish voice dictation engine configuration."
+              )}
             </p>
           </div>
 
@@ -304,12 +383,18 @@ export default function SettingsPage({ section }: SettingsPageProps) {
                   </p>
                 </div>
                 {isKeyConfigured ? (
-                  <Badge variant="outline" className="text-[11px] border-emerald-500/40 text-emerald-500 bg-emerald-500/10 flex items-center gap-1">
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] border-emerald-500/40 text-emerald-500 bg-emerald-500/10 flex items-center gap-1"
+                  >
                     <Check size={12} />
                     {t("settings.speech.configured", "Configured")}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-[11px] border-amber-500/40 text-amber-500 bg-amber-500/10">
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] border-amber-500/40 text-amber-500 bg-amber-500/10"
+                  >
                     {t("settings.speech.notConfigured", "Not Configured")}
                   </Badge>
                 )}
@@ -318,7 +403,11 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               <div className="flex gap-2">
                 <input
                   type="password"
-                  placeholder={isKeyConfigured ? "••••••••••••••••" : t("settings.speech.keyPlaceholder", "Enter Gnani API key...")}
+                  placeholder={
+                    isKeyConfigured
+                      ? "••••••••••••••••"
+                      : t("settings.speech.keyPlaceholder", "Enter Gnani API key...")
+                  }
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
                   className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -428,28 +517,16 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               </select>
             </SettingsRow>
 
-            <SettingsRow
-              label={t("settings.privacy.discarded", "Save discarded recordings")}
-              description={t(
-                "settings.privacy.discardedDesc",
-                "Save recordings that were explicitly cancelled or discarded."
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={settings.saveDiscardedTranscriptions}
-                onChange={(e) => settings.setSaveDiscardedTranscriptions(e.target.checked)}
-                className="rounded border-border"
-              />
-            </SettingsRow>
-
             <div className="pt-2 flex items-center justify-between border-t border-border/50">
               <div>
                 <p className="text-xs font-medium text-foreground">
                   {t("settings.privacy.clearHistory", "Clear all history")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {t("settings.privacy.clearHistoryDesc", "Permanently delete all stored dictations from local database.")}
+                  {t(
+                    "settings.privacy.clearHistoryDesc",
+                    "Permanently delete all stored dictations from local database."
+                  )}
                 </p>
               </div>
               <Button
@@ -465,7 +542,9 @@ export default function SettingsPage({ section }: SettingsPageProps) {
                 className="h-8 text-xs"
               >
                 <Trash2 size={13} className="mr-1" />
-                {confirmClearHistory ? t("common.confirm", "Confirm Delete?") : t("settings.privacy.clearBtn", "Clear History")}
+                {confirmClearHistory
+                  ? t("common.confirm", "Confirm Delete?")
+                  : t("settings.privacy.clearBtn", "Clear History")}
               </Button>
             </div>
           </SettingsSection>
@@ -481,7 +560,10 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               {t("settings.system.title", "System")}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {t("settings.system.description", "Input devices, GPU acceleration, and diagnostics.")}
+              {t(
+                "settings.system.description",
+                "Input devices, GPU acceleration, and diagnostics."
+              )}
             </p>
           </div>
 
@@ -508,7 +590,9 @@ export default function SettingsPage({ section }: SettingsPageProps) {
                   {gpuInfo.gpuDevice.map((dev, idx) => (
                     <div key={idx} className="text-xs text-muted-foreground flex justify-between">
                       <span>{dev.description || "Generic GPU"}</span>
-                      {dev.driverVendor && <span className="text-[11px] opacity-75">{dev.driverVendor}</span>}
+                      {dev.driverVendor && (
+                        <span className="text-[11px] opacity-75">{dev.driverVendor}</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -535,7 +619,10 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               {t("settings.about.title", "About")}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {t("settings.about.description", "Application version, licensing, and upstream attribution.")}
+              {t(
+                "settings.about.description",
+                "Application version, licensing, and upstream attribution."
+              )}
             </p>
           </div>
 
@@ -553,28 +640,14 @@ export default function SettingsPage({ section }: SettingsPageProps) {
               label={t("settings.about.licenseLabel", "License")}
               description={t("settings.about.licenseDesc", "Open-source software license")}
             >
-              <a
-                href="https://github.com/abhinavtiwary15/DhwaniFlow/blob/main/LICENSE"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-primary hover:underline font-medium"
-              >
-                MIT License
-              </a>
+              <span>MIT License</span>
             </SettingsRow>
 
             <SettingsRow
               label={t("settings.about.repoLabel", "Source Repository")}
               description={t("settings.about.repoDesc", "Official GitHub repository")}
             >
-              <a
-                href="https://github.com/abhinavtiwary15/DhwaniFlow"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-primary hover:underline font-mono"
-              >
-                github.com/abhinavtiwary15/DhwaniFlow
-              </a>
+              <span>github.com/abhinavtiwary15/DhwaniFlow</span>
             </SettingsRow>
           </SettingsSection>
 

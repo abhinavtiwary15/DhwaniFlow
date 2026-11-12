@@ -5,44 +5,20 @@ const { app } = require("electron");
 const debugLogger = require("./debugLogger");
 const { normalizeUiLanguage } = require("./i18nMain");
 const secretCrypto = require("./secretCrypto");
-const SECRET_KEYS = [
-  "GNANI_API_KEY",
-];
+const SECRET_KEYS = ["GNANI_API_KEY"];
 
 const SECRET_KEY_SET = new Set(SECRET_KEYS);
 
 const PERSISTED_KEYS = [
   ...SECRET_KEYS,
-  "LOCAL_TRANSCRIPTION_PROVIDER",
-  "PARAKEET_MODEL",
-  "DICTATION_LANGUAGE",
-  "LOCAL_WHISPER_MODEL",
-  "CLEANUP_PROVIDER",
-  "LOCAL_CLEANUP_MODEL",
-  "DICTATION_AGENT_PROVIDER",
-  "LOCAL_DICTATION_AGENT_MODEL",
-  "LLAMA_GPU_BACKEND",
-  "LLAMA_VULKAN_ENABLED",
   "DICTATION_KEY",
-  "VOICE_AGENT_KEY",
-  "TRANSLATION_KEY",
-  "MEETING_KEY",
+  "COMMAND_KEY",
+  "COMMAND_MODE_ENABLED",
   "ACTIVATION_MODE",
   "FLOATING_ICON_AUTO_HIDE",
   "PANEL_START_POSITION",
   "START_MINIMIZED",
   "UI_LANGUAGE",
-  "WHISPER_CUDA_ENABLED",
-  "WHISPER_VULKAN_ENABLED",
-  "WHISPER_VULKAN_DEVICE",
-  "WHISPER_GPU_FAILED",
-  "WHISPER_GPU_FAILED_REASON_CUDA",
-  "WHISPER_GPU_FAILED_REASON_VULKAN",
-  "WHISPER_THREADS",
-  "TRANSCRIPTION_GPU_UUID",
-  "INTELLIGENCE_GPU_UUID",
-  // Written by the Settings debug toggle (set-debug-logging)
-  "OPENWHISPR_LOG_LEVEL",
 ];
 
 // Module-level so writes are serialized across all instances — hotkeyManager
@@ -86,6 +62,8 @@ class EnvironmentManager {
   // both no-ops on fresh installs, so neither path triggers Keychain until
   // the user actually saves their first secret.
   async init() {
+    if (process.env.GNANI_API_KEY)
+      await this._saveSecretKey("GNANI_API_KEY", process.env.GNANI_API_KEY);
     if (!fs.existsSync(this._getMigrationSentinelPath())) {
       await this._migrateToSecureStorage();
     }
@@ -121,6 +99,7 @@ class EnvironmentManager {
     try {
       const buffer = await fsPromises.readFile(filePath);
       const { value, needsReencrypt } = secretCrypto.decrypt(buffer);
+      debugLogger.registerSecret(value);
       this._secrets.set(envVarName, value);
       delete process.env[envVarName];
       if (needsReencrypt) await this._saveSecretKey(envVarName, value);
@@ -135,6 +114,7 @@ class EnvironmentManager {
   }
 
   async _saveSecretKey(envVarName, value) {
+    debugLogger.registerSecret(value);
     if (!value) {
       await this._deleteSecretKey(envVarName);
       return;
@@ -167,13 +147,6 @@ class EnvironmentManager {
   async _migrateToSecureStorage() {
     const dir = this._getSecureKeysDir();
     await fsPromises.mkdir(dir, { recursive: true });
-
-    // Adopt renamed key so the value survives migration. Old releases stored
-    // it under CUSTOM_REASONING_API_KEY; new code only encrypts CUSTOM_CLEANUP_API_KEY.
-    if (process.env.CUSTOM_REASONING_API_KEY && !process.env.CUSTOM_CLEANUP_API_KEY) {
-      process.env.CUSTOM_CLEANUP_API_KEY = process.env.CUSTOM_REASONING_API_KEY;
-    }
-    delete process.env.CUSTOM_REASONING_API_KEY;
 
     const migrated = [];
     try {
@@ -216,7 +189,7 @@ class EnvironmentManager {
   }
 
   async _writeEnvFile(envPath) {
-    let envContent = "# OpenWhispr Environment Variables\n";
+    let envContent = "# DhwaniFlow preferences\n";
     for (const key of PERSISTED_KEYS) {
       if (key === "GNANI_API_KEY" || SECRET_KEY_SET.has(key)) continue;
       if (process.env[key]) {
@@ -269,40 +242,25 @@ class EnvironmentManager {
     return result;
   }
 
-  getVoiceAgentKey() {
-    const key = this._getKey("VOICE_AGENT_KEY");
-    if (key) return key;
-    // The chat-agent window is gone; its hotkey now opens the assistant by voice.
-    const legacy = this._getKey("CHAT_AGENT_KEY");
-    if (legacy) {
-      this.saveVoiceAgentKey(legacy);
-      delete process.env.CHAT_AGENT_KEY;
-    }
-    return legacy;
+  getCommandKey() {
+    return (
+      this._getKey("COMMAND_KEY") ||
+      (process.platform === "darwin" ? "Control+Option+Space" : "Control+Alt+Space")
+    );
   }
 
-  saveVoiceAgentKey(key) {
-    const result = this._saveKey("VOICE_AGENT_KEY", key);
+  saveCommandKey(key) {
+    const result = this._saveKey("COMMAND_KEY", key);
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
 
-  getTranslationKey() {
-    return this._getKey("TRANSLATION_KEY");
+  getCommandModeEnabled() {
+    return this._getKey("COMMAND_MODE_ENABLED") === "true";
   }
 
-  saveTranslationKey(key) {
-    const result = this._saveKey("TRANSLATION_KEY", key);
-    this.saveAllKeysToEnvFile().catch(() => {});
-    return result;
-  }
-
-  getMeetingKey() {
-    return this._getKey("MEETING_KEY");
-  }
-
-  saveMeetingKey(key) {
-    const result = this._saveKey("MEETING_KEY", key);
+  saveCommandModeEnabled(enabled) {
+    const result = this._saveKey("COMMAND_MODE_ENABLED", String(Boolean(enabled)));
     this.saveAllKeysToEnvFile().catch(() => {});
     return result;
   }
@@ -405,6 +363,7 @@ class EnvironmentManager {
   }
 
   async clearAllPersistedData() {
+    await envWriteQueue.catch(() => {});
     this._secrets.clear();
     for (const envVarName of PERSISTED_KEYS) {
       delete process.env[envVarName];

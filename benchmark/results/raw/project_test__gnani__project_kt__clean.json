@@ -1,0 +1,156 @@
+[
+  {
+    "id": "p01",
+    "category": "project",
+    "text": "windowManager mein createMainWindow call hone ke baad setScreenContextProtection enable kar dena",
+    "must_have_terms": [
+      "createMainWindow",
+      "setScreenContextProtection"
+    ],
+    "audio_file": "audio\\project\\clean\\p01.wav",
+    "transcript": "window manager में create main window call होने के बाद, setScreenContextProtection enable कर देना।",
+    "latency_ms": 5010,
+    "error": null
+  },
+  {
+    "id": "p02",
+    "category": "project",
+    "text": "bhai resolveTranscriptionRoute function check karo aur byokFileSizeLimit verify kar lo",
+    "must_have_terms": [
+      "resolveTranscriptionRoute",
+      "byokFileSizeLimit"
+    ],
+    "audio_file": "audio\\project\\clean\\p02.wav",
+    "transcript": "by resolve transcription route function check करो, और by ok file size limit verify कर लो।",
+    "latency_ms": 6179,
+    "error": null
+  },
+  {
+    "id": "p03",
+    "category": "project",
+    "text": "hotkeyManager ke andar normalizeToAccelerator helper lagao taaki isRightSideModifier handle ho sake",
+    "must_have_terms": [
+      "normalizeToAccelerator",
+      "isRightSideModifier"
+    ],
+    "audio_file": "audio\\project\\clean\\p03.wav",
+    "transcript": "hot key manager के अंदर normalizeToAccelerator helper लगाओ। ताकि is right side modifier handle हो सके।",
+    "latency_ms": 8245,
+    "error": null
+  },
+  {
+    "id": "p04",
+    "category": "project",
+    "text": "useAudioRecording mein stopRequestedDuringStartRef reset karo aur pastesInFlightRef count check karo",
+    "must_have_terms": [
+      "stopRequestedDuringStartRef",
+      "pastesInFlightRef"
+    ],
+    "audio_file": "audio\\project\\clean\\p04.wav",
+    "transcript": "use audio recording में stop request during start wave reset करो और। press in flight ref count चेक करो।",
+    "latency_ms": 8101,
+    "error": null
+  },
+  {
+    "id": "p05",
+    "category": "project",
+    "text": "ReasoningService ke start mein assertReasoningAllowedByPolicy call karo aur hasLanCleanupConfiguration check karo",
+    "must_have_terms": [
+      "assertReasoningAllowedByPolicy",
+      "hasLanCleanupConfiguration"
+    ],
+    "audio_file": "audio\\project\\clean\\p05.wav",
+    "transcript": "",
+    "latency_ms": 22085,
+    "error": "HTTP_500: {\"error\":{\"message\":\"This operation was aborted\"}}"
+  },
+  {
+    "id": "p06",
+    "category": "project",
+    "text": "correctionLearner module mein findEditedRegion run karo aur extractCorrections se list banao",
+    "must_have_terms": [
+      "findEditedRegion",
+      "extractCorrections"
+    ],
+    "audio_file": "audio\\project\\clean\\p06.wav",
+    "transcript": "correction learner module में findEditedRegion run करो। और extract corrections से list बनाओ।",
+    "latency_ms": 21159,
+    "error": null
+  },
+  {
+    "id": "p07",
+    "category": "project",
+    "text": "Linux desktop par spawnWlCopy use karo ya seedha writeClipboardInRenderer execute karo",
+    "must_have_terms": [
+      "spawnWlCopy",
+      "writeClipboardInRenderer"
+    ],
+    "audio_file": "audio\\project\\clean\\p07.wav",
+    "transcript": "Linux desktop पर spawnWlCopy use करो और या सीधा। write CLI P board inner render execute करो।",
+    "latency_ms": 9828,
+    "error": null
+  },
+  {
+    "id": "p08",
+    "category": "project",
+    "text": "database instance par setActiveAccountId set karke noteTextMatchesSnapshot compare karo",
+    "must_have_terms": [
+      "setActiveAccountId",
+      "noteTextMatchesSnapshot"
+    ],
+    "audio_file": "audio\\project\\clean\\p08.wav",
+    "transcript": "database instance पर set activate account ID set करके node। Text matches snapshot compare.",
+    "latency_ms": 8441,
+    "error": null
+  },
+  {
+    "id": "p09",
+    "category": "project",
+    "text": "audioManager mein attachTranscript execute karo jab audioExtensionForMime wav return kare",
+    "must_have_terms": [
+      "attachTranscript",
+      "audioExtensionForMime"
+    ],
+    "audio_file": "audio\\project\\clean\\p09.wav",
+    "transcript": "audio manager में attach transcript execute करो, जब audio extension for my। my await me wave return कर।",
+    "latency_ms": 12198,
+    "error": null
+  },
+  {
+    "id": "p10",
+    "category": "project",
+    "text": "agar user function key press kare toh isUnsupportedFnCombination flag true return karega",
+    "must_have_terms": [
+      "isUnsupportedFnCombination"
+    ],
+    "audio_file": "audio\\project\\clean\\p10.wav",
+    "transcript": "अगर तुम function key press करें, तो is unsupported fn combination flag true। return करेगा।",
+    "latency_ms": 15090,
+    "error": null
+  },
+  {
+    "id": "p11",
+    "category": "project",
+    "text": "custom provider ke case mein buildBatchEndpoint se final URL construct hota hai",
+    "must_have_terms": [
+      "buildBatchEndpoint"
+    ],
+    "audio_file": "audio\\project\\clean\\p11.wav",
+    "transcript": "custom provider के case में, buildBatchEndpoint से final URL construct होता है।",
+    "latency_ms": 16845,
+    "error": null
+  },
+  {
+    "id": "p12",
+    "category": "project",
+    "text": "audio pipeline ke andar resolveReasoningRoute call karo aur diff calculate karne ke liye findSubstitutions use karo",
+    "must_have_terms": [
+      "resolveReasoningRoute",
+      "findSubstitutions"
+    ],
+    "audio_file": "audio\\project\\clean\\p12.wav",
+    "transcript": "audio pipeline के अंदर resolve reasoning route call और this। calculate करने के लिए find substitutions use करो।",
+    "latency_ms": 13688,
+    "error": null
+  }
+]

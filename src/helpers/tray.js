@@ -233,36 +233,14 @@ class TrayManager {
   }
 
   createFallbackIcon() {
-    try {
-      // Create a simple 16x16 PNG icon programmatically
-      const { createCanvas } = require("canvas");
-      const canvas = createCanvas(16, 16);
-      const ctx = canvas.getContext("2d");
-
-      ctx.fillStyle = "#000000";
-      ctx.beginPath();
-      ctx.arc(8, 8, 6, 0, 2 * Math.PI);
-      ctx.fill();
-
-      const buffer = canvas.toBuffer("image/png");
-      const fallbackIcon = nativeImage.createFromBuffer(buffer);
-      debugLogger.info("Created fallback tray icon", undefined, "tray");
-      return fallbackIcon;
-    } catch (fallbackError) {
-      debugLogger.warn("Canvas not available, creating minimal fallback icon", undefined, "tray");
-      // Create a minimal 16x16 black square PNG as fallback
-      const pngData = Buffer.from([
-        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
-        0x52, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
-        0x91, 0x68, 0x36, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x28, 0x53, 0x63, 0x08,
-        0x05, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe5, 0x27, 0xde, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x49,
-        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-      ]);
-
-      const fallbackIcon = nativeImage.createFromBuffer(pngData);
-      debugLogger.info("Created minimal fallback tray icon", undefined, "tray");
-      return fallbackIcon;
-    }
+    const pngData = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+      0x52, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x10, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+      0x91, 0x68, 0x36, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x28, 0x53, 0x63, 0x08,
+      0x05, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe5, 0x27, 0xde, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x49,
+      0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ]);
+    return nativeImage.createFromBuffer(pngData);
   }
 
   buildContextMenuTemplate() {
@@ -278,17 +256,6 @@ class TrayManager {
           dictating
             ? this.windowManager?.sendStopDictation()
             : this.windowManager?.sendStartDictation(),
-      },
-      {
-        label: i18nMain.t("app.commandMenu.askAssistant"),
-        click: () => this.windowManager?.sendOpenAssistantPanel(),
-      },
-      {
-        // Starts in the main process, like the meeting hotkey, which refuses
-        // it under policy; the pill's menu hides it then, the tray disables it.
-        label: i18nMain.t("app.commandMenu.startMeetingRecording"),
-        enabled: !this.windowManager?.getMeetingRecordingRefusal?.(),
-        click: () => this.windowManager?.startManualMeeting(),
       },
       { type: "separator" },
       {

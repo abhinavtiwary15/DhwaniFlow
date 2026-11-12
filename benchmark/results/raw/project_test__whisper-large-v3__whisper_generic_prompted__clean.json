@@ -1,0 +1,240 @@
+[
+  {
+    "id": "p01",
+    "category": "project",
+    "text": "windowManager mein createMainWindow call hone ke baad setScreenContextProtection enable kar dena",
+    "must_have_terms": [
+      "createMainWindow",
+      "setScreenContextProtection"
+    ],
+    "audio_file": "audio\\project\\clean\\p01.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "window manager में create main window call होने के बाद set screen context protection enable कर जाना",
+    "latency_ms": 29603,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p02",
+    "category": "project",
+    "text": "bhai resolveTranscriptionRoute function check karo aur byokFileSizeLimit verify kar lo",
+    "must_have_terms": [
+      "resolveTranscriptionRoute",
+      "byokFileSizeLimit"
+    ],
+    "audio_file": "audio\\project\\clean\\p02.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "by resolve, transcription, root, function, check, buy, ok, file, size, limit, verify",
+    "latency_ms": 19550,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p03",
+    "category": "project",
+    "text": "hotkeyManager ke andar normalizeToAccelerator helper lagao taaki isRightSideModifier handle ho sake",
+    "must_have_terms": [
+      "normalizeToAccelerator",
+      "isRightSideModifier"
+    ],
+    "audio_file": "audio\\project\\clean\\p03.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "hotkey manager के अंदर normalize to accelerator help पर लगाओ ताकि इस right side modifier हो सके",
+    "latency_ms": 24311,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p04",
+    "category": "project",
+    "text": "useAudioRecording mein stopRequestedDuringStartRef reset karo aur pastesInFlightRef count check karo",
+    "must_have_terms": [
+      "stopRequestedDuringStartRef",
+      "pastesInFlightRef"
+    ],
+    "audio_file": "audio\\project\\clean\\p04.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "USE AUDIO RECORDING ME STOP REQUEST DURING START REF, RESET, PRESS IN FLIGHT REF, COUNT CHECK",
+    "latency_ms": 28589,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p05",
+    "category": "project",
+    "text": "ReasoningService ke start mein assertReasoningAllowedByPolicy call karo aur hasLanCleanupConfiguration check karo",
+    "must_have_terms": [
+      "assertReasoningAllowedByPolicy",
+      "hasLanCleanupConfiguration"
+    ],
+    "audio_file": "audio\\project\\clean\\p05.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "reasoning service के start में asset, region, all allowed by policy call करो और health, land, cleanup, configuration चेक करो",
+    "latency_ms": 26975,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p06",
+    "category": "project",
+    "text": "correctionLearner module mein findEditedRegion run karo aur extractCorrections se list banao",
+    "must_have_terms": [
+      "findEditedRegion",
+      "extractCorrections"
+    ],
+    "audio_file": "audio\\project\\clean\\p06.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "correction learner module में find edited region run करो और extract correction से list बनाओ",
+    "latency_ms": 23460,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p07",
+    "category": "project",
+    "text": "Linux desktop par spawnWlCopy use karo ya seedha writeClipboardInRenderer execute karo",
+    "must_have_terms": [
+      "spawnWlCopy",
+      "writeClipboardInRenderer"
+    ],
+    "audio_file": "audio\\project\\clean\\p07.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "Linux desktop पर spawn W1 copy use करो या सीधा write CLIP board in render एगेजिक्यूट करो",
+    "latency_ms": 30067,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p08",
+    "category": "project",
+    "text": "database instance par setActiveAccountId set karke noteTextMatchesSnapshot compare karo",
+    "must_have_terms": [
+      "setActiveAccountId",
+      "noteTextMatchesSnapshot"
+    ],
+    "audio_file": "audio\\project\\clean\\p08.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "database, instance, word, set, activate, account, id, set, note, text, matches, snapshot, compare",
+    "latency_ms": 24262,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p09",
+    "category": "project",
+    "text": "audioManager mein attachTranscript execute karo jab audioExtensionForMime wav return kare",
+    "must_have_terms": [
+      "attachTranscript",
+      "audioExtensionForMime"
+    ],
+    "audio_file": "audio\\project\\clean\\p09.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "audio manager में attach, transcript, execute करो जब audio extension for my, my, my, me, they return करें",
+    "latency_ms": 27897,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p10",
+    "category": "project",
+    "text": "agar user function key press kare toh isUnsupportedFnCombination flag true return karega",
+    "must_have_terms": [
+      "isUnsupportedFnCombination"
+    ],
+    "audio_file": "audio\\project\\clean\\p10.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "अगर तुन फंसन की प्रेश करे तो इस अंसपोर्टेड एफन कॉंबिनेशन फ्लैक ड्रू रिटर्न करेगा",
+    "latency_ms": 44984,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Devanagari",
+    "error": null
+  },
+  {
+    "id": "p11",
+    "category": "project",
+    "text": "custom provider ke case mein buildBatchEndpoint se final URL construct hota hai",
+    "must_have_terms": [
+      "buildBatchEndpoint"
+    ],
+    "audio_file": "audio\\project\\clean\\p11.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "custom provider के case में built batch endpoints से final URL construct होता है",
+    "latency_ms": 24756,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  },
+  {
+    "id": "p12",
+    "category": "project",
+    "text": "audio pipeline ke andar resolveReasoningRoute call karo aur diff calculate karne ke liye findSubstitutions use karo",
+    "must_have_terms": [
+      "resolveReasoningRoute",
+      "findSubstitutions"
+    ],
+    "audio_file": "audio\\project\\clean\\p12.wav",
+    "engine": "whisper-large-v3",
+    "model": "large-v3",
+    "device": "cpu",
+    "compute_type": "int8",
+    "transcript": "audio pipeline के अंदर resolve, reasoning, root, call और diff calculate करने के लिए find substitutions use करो",
+    "latency_ms": 27468,
+    "detected_language": "hi",
+    "language_probability": 1,
+    "script": "Latin",
+    "error": null
+  }
+]

@@ -10,7 +10,12 @@ const {
   WavValidationError,
 } = require("../../../src/helpers/gnani/wav-utils");
 
-function createSyntheticWav(durationSec = 1.0, sampleRate = 16000, numChannels = 1, bitsPerSample = 16) {
+function createSyntheticWav(
+  durationSec = 1.0,
+  sampleRate = 16000,
+  numChannels = 1,
+  bitsPerSample = 16
+) {
   const numSamples = Math.floor(sampleRate * durationSec);
   const dataSize = numSamples * numChannels * (bitsPerSample / 8);
   const header = createWavHeader(dataSize, sampleRate, numChannels, bitsPerSample);
@@ -25,12 +30,14 @@ describe("wav-utils", () => {
       const header = createWavHeader(dataSize, 16000, 1, 16);
       assert.equal(header.length, 44);
 
-      const meta = validateWavHeader(header);
+      const wav = Buffer.concat([header, Buffer.alloc(dataSize)]);
+      const meta = validateWavHeader(wav);
       assert.equal(meta.sampleRate, 16000);
       assert.equal(meta.numChannels, 1);
       assert.equal(meta.bitsPerSample, 16);
       assert.equal(meta.durationSeconds, 2.0);
-      assert.equal(isValid16kMonoWav(header), true);
+      assert.equal(isValid16kMonoWav(wav), true);
+      assert.throws(() => validateWavHeader(header), WavValidationError);
     });
 
     test("rejects buffers smaller than 44 bytes", () => {
@@ -45,36 +52,24 @@ describe("wav-utils", () => {
       const corrupted = Buffer.alloc(44);
       corrupted.write("AIFF", 0);
       corrupted.write("NONE", 8);
-      assert.throws(
-        () => validateWavHeader(corrupted),
-        /Not a valid RIFF\/WAVE container/
-      );
+      assert.throws(() => validateWavHeader(corrupted), /Not a valid RIFF\/WAVE container/);
     });
 
     test("rejects non-16kHz sample rate", () => {
       const wav44k = createSyntheticWav(1.0, 44100, 1, 16);
-      assert.throws(
-        () => validateWavHeader(wav44k),
-        /Expected 16000 Hz sample rate/
-      );
+      assert.throws(() => validateWavHeader(wav44k), /Expected 16000 Hz sample rate/);
       assert.equal(isValid16kMonoWav(wav44k), false);
     });
 
     test("rejects stereo audio (channels = 2)", () => {
       const stereoWav = createSyntheticWav(1.0, 16000, 2, 16);
-      assert.throws(
-        () => validateWavHeader(stereoWav),
-        /Expected mono audio/
-      );
+      assert.throws(() => validateWavHeader(stereoWav), /Expected mono audio/);
       assert.equal(isValid16kMonoWav(stereoWav), false);
     });
 
     test("rejects non-16bit bit depth (e.g. 24-bit)", () => {
       const wav24 = createSyntheticWav(1.0, 16000, 1, 24);
-      assert.throws(
-        () => validateWavHeader(wav24),
-        /Expected 16-bit audio/
-      );
+      assert.throws(() => validateWavHeader(wav24), /Expected 16-bit audio/);
     });
 
     test("rejects declared data size exceeding actual buffer bytes", () => {
@@ -98,10 +93,7 @@ describe("wav-utils", () => {
       const pcm = Buffer.alloc(32000);
       const badByteRate = Buffer.concat([header, pcm]);
 
-      assert.throws(
-        () => validateWavHeader(badByteRate),
-        /byte rate|WavValidationError/i
-      );
+      assert.throws(() => validateWavHeader(badByteRate), /byte rate|WavValidationError/i);
     });
   });
 
@@ -113,9 +105,9 @@ describe("wav-utils", () => {
       assert.equal(computeDuration(wav3s), 3.5);
     });
 
-    test("handles empty or invalid buffer gracefully", () => {
-      assert.equal(computeDuration(null), 0);
-      assert.equal(computeDuration(Buffer.alloc(10)), 0);
+    test("rejects malformed containers rather than guessing a duration", () => {
+      assert.throws(() => computeDuration(null), WavValidationError);
+      assert.throws(() => computeDuration(Buffer.alloc(10)), WavValidationError);
     });
   });
 

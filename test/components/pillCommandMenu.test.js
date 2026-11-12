@@ -9,7 +9,7 @@ const { createRendererServer, installBrowserGlobals } = require("../lib/renderer
 async function renderMenu(t, props) {
   installBrowserGlobals(t);
   const vite = await createRendererServer(t, {
-    cachePrefix: "openwhispr-pill-command-menu-test-",
+    cachePrefix: "dhwaniflow-pill-command-menu-test-",
   });
   const mod = await vite.ssrLoadModule("/components/dictation/PillCommandMenu.tsx");
   return renderToStaticMarkup(
@@ -17,13 +17,9 @@ async function renderMenu(t, props) {
       buttonRef: { current: null },
       align: "right",
       isRecording: false,
-      agentAllowed: true,
-      meetingAllowed: true,
       isHovered: false,
       setWindowInteractivity: () => {},
       onToggleListening: () => {},
-      onAskAssistant: () => {},
-      onStartMeeting: () => {},
       onHide: () => {},
       onClose: () => {},
       ...props,
@@ -31,12 +27,15 @@ async function renderMenu(t, props) {
   );
 }
 
-test("the command menu hides Ask Assistant while a recording is active", async (t) => {
+test("the command menu exposes the actual listening action in each state", async (t) => {
   const idleMarkup = await renderMenu(t, { isRecording: false });
-  assert.match(idleMarkup, /askAssistant/);
+  assert.match(idleMarkup, /startListening/);
+  assert.match(idleMarkup, /hideForNow/);
+  assert.doesNotMatch(idleMarkup, /askAssistant|startMeetingRecording/);
 
   const recordingMarkup = await renderMenu(t, { isRecording: true });
-  assert.doesNotMatch(recordingMarkup, /askAssistant/);
+  assert.match(recordingMarkup, /stopListening/);
+  assert.doesNotMatch(recordingMarkup, /askAssistant|startMeetingRecording/);
 });
 
 // #2064: a menu always anchored on the pill's right edge hung past the window's left edge (and
@@ -62,10 +61,4 @@ test("the command menu anchors on the pill's docked side", async (t) => {
   for (const classes of [right, left, center]) {
     assert.ok(!classes.includes("end-0") && !classes.includes("start-0"));
   }
-});
-
-test("the command menu offers a meeting recording only while idle and allowed", async (t) => {
-  assert.match(await renderMenu(t, {}), /startMeetingRecording/);
-  assert.doesNotMatch(await renderMenu(t, { isRecording: true }), /startMeetingRecording/);
-  assert.doesNotMatch(await renderMenu(t, { meetingAllowed: false }), /startMeetingRecording/);
 });

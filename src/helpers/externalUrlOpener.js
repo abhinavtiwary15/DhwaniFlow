@@ -27,6 +27,8 @@ const debugLogger = require("./debugLogger");
 const EXPLORER_BREAKING_CHARS = /[?#=,]/;
 
 async function openExternalUrl(url) {
+  if (!require("./navigationGuard").isExternalOpenUrl(url))
+    throw new Error("External destination is not allowed");
   const { protocol, href } = new URL(url);
   if (
     process.platform === "win32" &&

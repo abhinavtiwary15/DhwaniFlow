@@ -166,7 +166,7 @@ def post_gnani_request(url: str, headers: Dict[str, str], form_data: Dict[str, s
 
 
 def run_gnani_benchmark(args):
-    base_dir = Path(__file__).resolve().parent
+    base_dir = Path(getattr(args, "base_dir", None) or Path(__file__).resolve().parent)
     if args.project_test and args.sentences == "benchmark/sentences.json":
         sentences_path = base_dir / "sentences_project.json"
     else:

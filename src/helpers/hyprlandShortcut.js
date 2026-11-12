@@ -164,7 +164,8 @@ function writeConfigAtomically(filePath, content) {
     try {
       fs.unlinkSync(temp);
     } catch (error) {
-      if (error.code !== "ENOENT") throw error;
+      if (error.code !== "ENOENT")
+        console.warn("Shortcut temporary-file cleanup failed", error.code);
     }
   }
 }

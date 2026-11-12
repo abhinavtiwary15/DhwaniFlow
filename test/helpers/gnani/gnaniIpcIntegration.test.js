@@ -1,3 +1,5 @@
+const ipcFixture = require("../harness/ipc-environment").installIpcEnvironment();
+require("node:test").after(() => ipcFixture.restore());
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
 const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
@@ -94,7 +96,7 @@ describe("gnani-ipc integration with fake server", () => {
 
     const audioBuf = createTestWav(1.0);
     const result = await handleTranscribe(
-      {},
+      ipcFixture.event,
       audioBuf,
       {
         language: "hi-IN",
@@ -130,7 +132,7 @@ describe("gnani-ipc integration with fake server", () => {
 
     try {
       await handleTranscribe(
-        {},
+        ipcFixture.event,
         audioBuf,
         { language: "hi-IN", format: "transcribe" },
         mockEnvManager,
@@ -150,7 +152,7 @@ describe("gnani-ipc integration with fake server", () => {
 
     try {
       await handleTranscribe(
-        {},
+        ipcFixture.event,
         audioBuf,
         { language: "hi-IN", format: "transcribe" },
         mockEnvManager,
@@ -177,7 +179,7 @@ describe("gnani-ipc integration with fake server", () => {
 
     try {
       await handleTranscribe(
-        {},
+        ipcFixture.event,
         audioBuf,
         { language: "hi-IN", format: "transcribe" },
         emptyEnv,
@@ -197,7 +199,7 @@ describe("gnani-ipc integration with fake server", () => {
 
     try {
       await handleTranscribe(
-        {},
+        ipcFixture.event,
         audioBuf,
         { language: "hi-IN", format: "transcribe" },
         mockEnvManager,
@@ -212,11 +214,11 @@ describe("gnani-ipc integration with fake server", () => {
   });
 
   test("handleTranscribe throws AUDIO_TOO_LONG when audio buffer exceeds limit", async () => {
-    const oversized = { byteLength: MAX_AUDIO_BYTES + 1024 };
+    const oversized = Buffer.alloc(MAX_AUDIO_BYTES + 1024);
 
     try {
       await handleTranscribe(
-        {},
+        ipcFixture.event,
         oversized,
         { language: "hi-IN", format: "transcribe" },
         mockEnvManager,
@@ -229,7 +231,11 @@ describe("gnani-ipc integration with fake server", () => {
   });
 
   test("handleTestKey, handleSaveKey, and handleGetStatus integration with environment", async () => {
-    const { handleTestKey, handleSaveKey, handleGetStatus } = require("../../../src/helpers/gnani/gnani-ipc");
+    const {
+      handleTestKey,
+      handleSaveKey,
+      handleGetStatus,
+    } = require("../../../src/helpers/gnani/gnani-ipc");
 
     let storedKey = "";
     const testEnv = {
@@ -242,26 +248,26 @@ describe("gnani-ipc integration with fake server", () => {
     };
 
     // Initially not configured
-    const statusBefore = await handleGetStatus({}, testEnv);
+    const statusBefore = await handleGetStatus(ipcFixture.event, testEnv);
     assert.equal(statusBefore.configured, false);
     assert.equal(statusBefore.model, "prisma-v3.0");
 
     // Test invalid key
-    const testInvalid = await handleTestKey({}, "too-short", testEnv);
+    const testInvalid = await handleTestKey(ipcFixture.event, "too-short", testEnv);
     assert.equal(testInvalid.valid, false);
 
     // Test valid key
     const validKey = "valid-integration-test-key-987654";
-    const testValid = await handleTestKey({}, validKey, testEnv);
+    const testValid = await handleTestKey(ipcFixture.event, validKey, testEnv);
     assert.equal(testValid.valid, true);
 
     // Save key
-    const saveRes = await handleSaveKey({}, validKey, testEnv);
+    const saveRes = await handleSaveKey(ipcFixture.event, validKey, testEnv);
     assert.equal(saveRes.success, true);
     assert.equal(storedKey, validKey);
 
     // Status now configured
-    const statusAfter = await handleGetStatus({}, testEnv);
+    const statusAfter = await handleGetStatus(ipcFixture.event, testEnv);
     assert.equal(statusAfter.configured, true);
   });
 });

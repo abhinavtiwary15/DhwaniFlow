@@ -1,0 +1,408 @@
+[
+  {
+    "id": "s01",
+    "category": "easy",
+    "text": "bhai kal ka standup kitne baje hai",
+    "must_have_terms": [],
+    "audio_file": "audio\\phone8k_noise\\s01.wav",
+    "transcript": "भाई, कल का standup कितने बजे है?",
+    "latency_ms": 3363,
+    "error": null
+  },
+  {
+    "id": "s02",
+    "category": "easy",
+    "text": "mujhe ek minute do main apna code dekh leta hoon",
+    "must_have_terms": [
+      "code"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s02.wav",
+    "transcript": "मुझे एक मिनट दो, मैं अपना code देख लेता हूँ।",
+    "latency_ms": 3800,
+    "error": null
+  },
+  {
+    "id": "s03",
+    "category": "easy",
+    "text": "ye bug kal se aa raha hai fix kar do please",
+    "must_have_terms": [
+      "bug",
+      "fix"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s03.wav",
+    "transcript": "ये bug कल से आ रहा है, fix कर दो please।",
+    "latency_ms": 3492,
+    "error": null
+  },
+  {
+    "id": "s04",
+    "category": "easy",
+    "text": "meeting ke baad mujhe summary bhej dena",
+    "must_have_terms": [
+      "meeting",
+      "summary"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s04.wav",
+    "transcript": "meeting के बाद मुझे summary भेज देना।",
+    "latency_ms": 3306,
+    "error": null
+  },
+  {
+    "id": "s05",
+    "category": "easy",
+    "text": "client ko bol do ki demo shukravaar ko hoga",
+    "must_have_terms": [
+      "client",
+      "demo"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s05.wav",
+    "transcript": "client को बोल दो कि demo शुक्रवार को होगा।",
+    "latency_ms": 4031,
+    "error": null
+  },
+  {
+    "id": "s06",
+    "category": "tech",
+    "text": "useEffect mein API call fail ho jaye toh error state set karo",
+    "must_have_terms": [
+      "useEffect",
+      "API",
+      "error",
+      "state"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s06.wav",
+    "transcript": "use effect, हम API call fail हो जाए तो as a state कर देना है।",
+    "latency_ms": 4279,
+    "error": null
+  },
+  {
+    "id": "s07",
+    "category": "tech",
+    "text": "PR merge karne se pehle ek baar tests chala lo",
+    "must_have_terms": [
+      "PR",
+      "merge",
+      "tests"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s07.wav",
+    "transcript": "PR merge करने से पहले एक बार test चला लो।",
+    "latency_ms": 3684,
+    "error": null
+  },
+  {
+    "id": "s08",
+    "category": "tech",
+    "text": "Kubernetes pod crash ho raha hai logs check karo",
+    "must_have_terms": [
+      "Kubernetes",
+      "pod",
+      "logs"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s08.wav",
+    "transcript": "",
+    "latency_ms": 3350,
+    "error": null
+  },
+  {
+    "id": "s09",
+    "category": "tech",
+    "text": "is function ko async bana do aur await laga do",
+    "must_have_terms": [
+      "function",
+      "async",
+      "await"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s09.wav",
+    "transcript": "इस function को async लगा दो और await लगा दो।",
+    "latency_ms": 3760,
+    "error": null
+  },
+  {
+    "id": "s10",
+    "category": "tech",
+    "text": "Docker container build hone ke baad staging pe deploy karo",
+    "must_have_terms": [
+      "Docker",
+      "container",
+      "build",
+      "staging",
+      "deploy"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s10.wav",
+    "transcript": "Docker container build होने के बाद staging पे deploy कर दो।",
+    "latency_ms": 3818,
+    "error": null
+  },
+  {
+    "id": "s11",
+    "category": "tech",
+    "text": "useState ka initial value null rakho aur loading flag add karo",
+    "must_have_terms": [
+      "useState",
+      "null",
+      "loading"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s11.wav",
+    "transcript": "use state का initial value null रखो और loading flag add करो।",
+    "latency_ms": 6909,
+    "error": null
+  },
+  {
+    "id": "s12",
+    "category": "tech",
+    "text": "main branch se naya feature branch banao aur commit push karo",
+    "must_have_terms": [
+      "branch",
+      "feature",
+      "commit",
+      "push"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s12.wav",
+    "transcript": "main branch से नया feature branch बनाओ और commit push करो।",
+    "latency_ms": 3981,
+    "error": null
+  },
+  {
+    "id": "s13",
+    "category": "tech",
+    "text": "backend ka endpoint 500 error de raha hai database connection check karo",
+    "must_have_terms": [
+      "backend",
+      "endpoint",
+      "500",
+      "database"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s13.wav",
+    "transcript": "backend का endpoint पाँच सौ error दे रहा है। database connection चेक करो।",
+    "latency_ms": 5898,
+    "error": null
+  },
+  {
+    "id": "s14",
+    "category": "tech",
+    "text": "is component ko TypeScript mein convert karo aur props ke types define karo",
+    "must_have_terms": [
+      "component",
+      "TypeScript",
+      "props",
+      "types"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s14.wav",
+    "transcript": "इस component को type script में convert करो और props define, types define करो।",
+    "latency_ms": 5072,
+    "error": null
+  },
+  {
+    "id": "s15",
+    "category": "tech",
+    "text": "JWT token expire hone par refresh token se naya token generate karo",
+    "must_have_terms": [
+      "JWT",
+      "token",
+      "refresh"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s15.wav",
+    "transcript": "date JWT token expire होने पर, refresh token से नया token generate करो।",
+    "latency_ms": 4830,
+    "error": null
+  },
+  {
+    "id": "s16",
+    "category": "tech",
+    "text": "Redis cache mein user session store karo aur TTL ek ghanta rakho",
+    "must_have_terms": [
+      "Redis",
+      "cache",
+      "session",
+      "TTL"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s16.wav",
+    "transcript": "Redis cache में user session store करवाओ, TTL एक घंटा या अलग हो?",
+    "latency_ms": 4986,
+    "error": null
+  },
+  {
+    "id": "s17",
+    "category": "tech",
+    "text": "pull request mein review comments resolve karo phir rebase kar lo",
+    "must_have_terms": [
+      "pull request",
+      "review",
+      "rebase"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s17.wav",
+    "transcript": "full request में review comments resolve करो, फिर replace कर लो।",
+    "latency_ms": 4358,
+    "error": null
+  },
+  {
+    "id": "s18",
+    "category": "numbers",
+    "text": "order amount dedh lakh rupaye hai",
+    "must_have_terms": [
+      "150000"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s18.wav",
+    "transcript": "order amount देख लेना, डेढ़ लाख रुपये है।",
+    "latency_ms": 3911,
+    "error": null
+  },
+  {
+    "id": "s19",
+    "category": "numbers",
+    "text": "payment ka reference number do hazaar paanch sau tees hai",
+    "must_have_terms": [
+      "2532"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s19.wav",
+    "transcript": "payment का reference number दो हज़ार पाँच सौ तीस है।",
+    "latency_ms": 4220,
+    "error": null
+  },
+  {
+    "id": "s20",
+    "category": "numbers",
+    "text": "mera pincode ek ek zero zero zero chaar hai",
+    "must_have_terms": [
+      "110004"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s20.wav",
+    "transcript": "मेरा pin code एक एक जीरो जीरो जीरो चार है।",
+    "latency_ms": 4223,
+    "error": null
+  },
+  {
+    "id": "s21",
+    "category": "numbers",
+    "text": "server port teen hazaar pe chal raha hai",
+    "must_have_terms": [
+      "3000"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s21.wav",
+    "transcript": "server code तीन हज़ार पे चल रहा है।",
+    "latency_ms": 3947,
+    "error": null
+  },
+  {
+    "id": "s22",
+    "category": "numbers",
+    "text": "api rate limit ek minute mein sau requests hai",
+    "must_have_terms": [
+      "100"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s22.wav",
+    "transcript": "API rate limit, एक मिनट में सौ request कराया।",
+    "latency_ms": 3687,
+    "error": null
+  },
+  {
+    "id": "s23",
+    "category": "numbers",
+    "text": "build number do sau paintalis hai",
+    "must_have_terms": [
+      "245"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s23.wav",
+    "transcript": "page number दो सौ पैंतालीस है।",
+    "latency_ms": 3846,
+    "error": null
+  },
+  {
+    "id": "s24",
+    "category": "numbers",
+    "text": "ticket number J I R A dash char sau baais",
+    "must_have_terms": [
+      "JIRA-422",
+      "JIRA 422"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s24.wav",
+    "transcript": "टिकट number GIA test चार सौ बाईस है।",
+    "latency_ms": 7381,
+    "error": null
+  },
+  {
+    "id": "s25",
+    "category": "numbers",
+    "text": "invoice ka total paanch lakh pachaas hazaar hai GST alag se",
+    "must_have_terms": [
+      "550000",
+      "GST"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s25.wav",
+    "transcript": "invoice का total पाँच लाख पचास हज़ार है, GST अलग से।",
+    "latency_ms": 7012,
+    "error": null
+  },
+  {
+    "id": "s26",
+    "category": "tech",
+    "text": "yaar ye regex thoda tricky hai isko unit test ke saath likho",
+    "must_have_terms": [
+      "regex",
+      "unit test"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s26.wav",
+    "transcript": "यार, ये regex थोड़ा tricky है। इसको unit test के साथ लिखो।",
+    "latency_ms": 5302,
+    "error": null
+  },
+  {
+    "id": "s27",
+    "category": "tech",
+    "text": "dashboard ka loading spinner mobile pe slow hai optimize karo",
+    "must_have_terms": [
+      "dashboard",
+      "loading",
+      "mobile",
+      "optimize"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s27.wav",
+    "transcript": "dashboard का loading spinner mobile के slow है, optimize करो।",
+    "latency_ms": 7683,
+    "error": null
+  },
+  {
+    "id": "s28",
+    "category": "tech",
+    "text": "CI pipeline fail ho gaya lint error hai ya test fail",
+    "must_have_terms": [
+      "CI",
+      "pipeline",
+      "lint",
+      "test"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s28.wav",
+    "transcript": "API pipeline fail हो गया। limit error है या test fail?",
+    "latency_ms": 4643,
+    "error": null
+  },
+  {
+    "id": "s29",
+    "category": "tech",
+    "text": "environment variable mein API key daalo repo mein commit mat karna",
+    "must_have_terms": [
+      "environment variable",
+      "API key",
+      "repo",
+      "commit"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s29.wav",
+    "transcript": "government variable में API key डालो और repo में commit मत करो।",
+    "latency_ms": 4327,
+    "error": null
+  },
+  {
+    "id": "s30",
+    "category": "tech",
+    "text": "GitHub Actions ka workflow file update karo aur cache enable karo",
+    "must_have_terms": [
+      "GitHub Actions",
+      "workflow",
+      "cache"
+    ],
+    "audio_file": "audio\\phone8k_noise\\s30.wav",
+    "transcript": "GitHub Actions का workflow file update करो और gate enable करो।",
+    "latency_ms": 4805,
+    "error": null
+  }
+]

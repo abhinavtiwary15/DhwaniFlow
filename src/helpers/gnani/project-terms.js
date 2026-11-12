@@ -61,18 +61,133 @@ const SECRET_TOKEN_PATTERNS = [
 ];
 
 const DEFAULT_STOPWORDS = new Set([
-  "the", "and", "that", "have", "for", "not", "with", "you", "this", "but", "his", "from",
-  "they", "say", "her", "she", "will", "one", "all", "would", "there", "their", "what",
-  "out", "about", "who", "get", "which", "when", "make", "can", "like", "time", "just",
-  "him", "know", "take", "people", "into", "year", "your", "good", "some", "could", "them",
-  "see", "other", "than", "then", "now", "look", "only", "come", "its", "over", "think",
-  "also", "back", "after", "use", "two", "how", "our", "work", "first", "well", "way",
-  "even", "new", "want", "because", "any", "these", "give", "day", "most", "are", "was",
-  "were", "been", "has", "had", "does", "did", "doing", "shall", "should", "true", "false",
-  "null", "undefined", "let", "var", "const", "return", "function", "this", "case", "default",
-  "break", "continue", "while", "each", "else", "try", "catch", "finally", "throw",
-  "typeof", "instanceof", "void", "delete", "export", "import", "from", "class",
-  "extends", "super", "self", "args", "kwargs", "file", "line", "test", "item", "list", "data"
+  "the",
+  "and",
+  "that",
+  "have",
+  "for",
+  "not",
+  "with",
+  "you",
+  "this",
+  "but",
+  "his",
+  "from",
+  "they",
+  "say",
+  "her",
+  "she",
+  "will",
+  "one",
+  "all",
+  "would",
+  "there",
+  "their",
+  "what",
+  "out",
+  "about",
+  "who",
+  "get",
+  "which",
+  "when",
+  "make",
+  "can",
+  "like",
+  "time",
+  "just",
+  "him",
+  "know",
+  "take",
+  "people",
+  "into",
+  "year",
+  "your",
+  "good",
+  "some",
+  "could",
+  "them",
+  "see",
+  "other",
+  "than",
+  "then",
+  "now",
+  "look",
+  "only",
+  "come",
+  "its",
+  "over",
+  "think",
+  "also",
+  "back",
+  "after",
+  "use",
+  "two",
+  "how",
+  "our",
+  "work",
+  "first",
+  "well",
+  "way",
+  "even",
+  "new",
+  "want",
+  "because",
+  "any",
+  "these",
+  "give",
+  "day",
+  "most",
+  "are",
+  "was",
+  "were",
+  "been",
+  "has",
+  "had",
+  "does",
+  "did",
+  "doing",
+  "shall",
+  "should",
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "let",
+  "var",
+  "const",
+  "return",
+  "function",
+  "this",
+  "case",
+  "default",
+  "break",
+  "continue",
+  "while",
+  "each",
+  "else",
+  "try",
+  "catch",
+  "finally",
+  "throw",
+  "typeof",
+  "instanceof",
+  "void",
+  "delete",
+  "export",
+  "import",
+  "from",
+  "class",
+  "extends",
+  "super",
+  "self",
+  "args",
+  "kwargs",
+  "file",
+  "line",
+  "test",
+  "item",
+  "list",
+  "data",
 ]);
 
 /**
@@ -130,8 +245,20 @@ function loadDevTerms(devTermsPath) {
     // Ignore read error, fallback below
   }
   return [
-    "API", "useEffect", "useState", "Kubernetes", "Docker", "PR", "merge",
-    "commit", "deploy", "backend", "frontend", "endpoint", "database", "token"
+    "API",
+    "useEffect",
+    "useState",
+    "Kubernetes",
+    "Docker",
+    "PR",
+    "merge",
+    "commit",
+    "deploy",
+    "backend",
+    "frontend",
+    "endpoint",
+    "database",
+    "token",
   ];
 }
 
@@ -176,6 +303,7 @@ function addToken(termMap, token, filePath, weight = 1) {
  */
 function extractFromPackageJson(filePath, termMap) {
   try {
+    if (fs.statSync(filePath).size > MAX_FILE_SIZE_BYTES) return;
     const raw = fs.readFileSync(filePath, "utf8");
     const pkg = JSON.parse(raw);
 
@@ -213,14 +341,15 @@ function extractFromCodeFile(filePath, termMap) {
       addToken(termMap, bp, filePath, 3);
     }
 
-    const content = fs.readFileSync(filePath, "utf8");
+    const source = fs.readFileSync(filePath, "utf8");
 
     // Extract import/require module names
-    const importRegex = /(?:import\s+.*?from\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))/g;
+    const importRegex =
+      /(?:import\s+.*?from\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))/g;
     let match;
-    while ((match = importRegex.exec(content)) !== null) {
+    while ((match = importRegex.exec(source)) !== null) {
       const moduleName = match[1] || match[2];
-      if (moduleName && !moduleName.startsWith(".")) {
+      if (moduleName && /^@?[\w/-]+$/.test(moduleName) && !moduleName.startsWith(".")) {
         const parts = splitIdentifier(moduleName.replace(/^@[^/]+\//, ""));
         for (const p of parts) {
           addToken(termMap, p, filePath, 3);
@@ -229,6 +358,9 @@ function extractFromCodeFile(filePath, termMap) {
     }
 
     // Extract declared functions, classes, components, identifiers
+    const content = source
+      .replace(/(["'`])(?:\\[\s\S]|(?!\1)[\s\S])*?\1/g, " ")
+      .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*/g, " ");
     const identRegex = /[a-zA-Z_$][a-zA-Z0-9_$]{2,}/g;
     while ((match = identRegex.exec(content)) !== null) {
       const ident = match[0];
@@ -269,6 +401,15 @@ function scanDirectorySafe(dirPath, rootRealPath, termMap, counter) {
   }
 
   for (const entry of entries) {
+    if (
+      counter.files >= 2000 ||
+      counter.bytes >= 8 * 1024 * 1024 ||
+      Date.now() > counter.deadline ||
+      termMap.size > 20000
+    ) {
+      counter.truncated = true;
+      return;
+    }
     const fullPath = path.join(dirPath, entry.name);
 
     // Skip secret files (.env*, certificates, keys)
@@ -280,12 +421,7 @@ function scanDirectorySafe(dirPath, rootRealPath, termMap, counter) {
     try {
       const lstat = fs.lstatSync(fullPath);
       if (lstat.isSymbolicLink()) {
-        const realTargetPath = fs.realpathSync(fullPath);
-        const rel = path.relative(rootRealPath, realTargetPath);
-        if (rel.startsWith("..") || path.isAbsolute(rel)) {
-          // Refuse symlink that points outside the allowed project directory
-          continue;
-        }
+        continue;
       }
     } catch {
       continue;
@@ -296,6 +432,9 @@ function scanDirectorySafe(dirPath, rootRealPath, termMap, counter) {
       scanDirectorySafe(fullPath, rootRealPath, termMap, counter);
     } else if (entry.isFile()) {
       counter.files++;
+      const size = fs.statSync(fullPath).size;
+      if (size > MAX_FILE_SIZE_BYTES || counter.bytes + size > 8 * 1024 * 1024) continue;
+      counter.bytes += size;
       if (entry.name === "package.json") {
         extractFromPackageJson(fullPath, termMap);
       } else {
@@ -321,7 +460,7 @@ function scanProjectFolders(folders, options = {}) {
   const maxTerms = Math.min(options.maxTerms || DEFAULT_MAX_TERMS, 200);
   const folderList = Array.isArray(folders) ? folders : [folders];
   const termMap = new Map();
-  const counter = { files: 0 };
+  const counter = { files: 0, bytes: 0, deadline: Date.now() + 1000, truncated: false };
 
   // Seed default dev terms
   const devTerms = loadDevTerms(options.devTermsPath);
@@ -361,6 +500,7 @@ function scanProjectFolders(folders, options = {}) {
     terms: topTerms,
     scannedFiles: counter.files,
     totalExtracted: scored.length,
+    truncated: counter.truncated,
   };
 }
 
@@ -372,3 +512,30 @@ module.exports = {
   DEFAULT_STOPWORDS,
   MAX_FILE_SIZE_BYTES,
 };
+const { Worker, isMainThread, workerData, parentPort } = require("node:worker_threads");
+if (!isMainThread && workerData?.kind === "project-terms")
+  parentPort.postMessage(scanProjectFolders(workerData.folders));
+module.exports.scanProjectFoldersAsync = (folders) =>
+  new Promise((resolve, reject) => {
+    const worker = new Worker(__filename, {
+      workerData: { kind: "project-terms", folders },
+      resourceLimits: { maxOldGenerationSizeMb: 64 },
+    });
+    const timer = setTimeout(() => {
+      worker.terminate();
+      reject(new Error("Project scan timed out"));
+    }, 3000);
+    worker.once("message", (result) => {
+      clearTimeout(timer);
+      worker.terminate();
+      resolve(result);
+    });
+    worker.once("error", () => {
+      clearTimeout(timer);
+      reject(new Error("Project scan failed"));
+    });
+    worker.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) reject(new Error("Project scan stopped"));
+    });
+  });

@@ -1,14 +1,12 @@
+const ipcFixture = require("../harness/ipc-environment").installIpcEnvironment();
+require("node:test").after(() => ipcFixture.restore());
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
 const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
 const { createWavHeader } = require("../../../src/helpers/gnani/wav-utils");
-const {
-  transcribe,
-  FifoQueue,
-  GnaniError,
-} = require("../../../src/helpers/gnani/gnani-client");
+const { transcribe, FifoQueue, GnaniError } = require("../../../src/helpers/gnani/gnani-client");
 const { handleCancel } = require("../../../src/helpers/gnani/gnani-ipc");
 
 function createTestWav(durationSec = 1.0) {
@@ -63,24 +61,50 @@ describe("gnani-client bounded queue and cancel", () => {
     const wav = createTestWav(1.0);
 
     // Start 4 jobs to fill the queue (1 active + 3 pending = max 3 pending)
-    const job1 = transcribe({ wav, apiKey: "test-key-queue", apiUrl: slowUrl, queue, requestId: "req-1" });
-    const job2 = transcribe({ wav, apiKey: "test-key-queue", apiUrl: slowUrl, queue, requestId: "req-2" });
-    const job3 = transcribe({ wav, apiKey: "test-key-queue", apiUrl: slowUrl, queue, requestId: "req-3" });
-    const job4 = transcribe({ wav, apiKey: "test-key-queue", apiUrl: slowUrl, queue, requestId: "req-4" });
+    const job1 = transcribe({
+      wav,
+      apiKey: "test-key-queue",
+      apiUrl: slowUrl,
+      queue,
+      requestId: "req-1",
+    });
+    const job2 = transcribe({
+      wav,
+      apiKey: "test-key-queue",
+      apiUrl: slowUrl,
+      queue,
+      requestId: "req-2",
+    });
+    const job3 = transcribe({
+      wav,
+      apiKey: "test-key-queue",
+      apiUrl: slowUrl,
+      queue,
+      requestId: "req-3",
+    });
+    const job4 = transcribe({
+      wav,
+      apiKey: "test-key-queue",
+      apiUrl: slowUrl,
+      queue,
+      requestId: "req-4",
+    });
 
     // Small delay to ensure jobs are queued
     await new Promise((r) => setTimeout(r, 50));
 
     // 5th job must be rejected immediately (queue busy/full)
     await assert.rejects(
-      () => transcribe({ wav, apiKey: "test-key-queue", apiUrl: slowUrl, queue, requestId: "req-5" }),
+      () =>
+        transcribe({ wav, apiKey: "test-key-queue", apiUrl: slowUrl, queue, requestId: "req-5" }),
       (err) => {
-        assert.ok(
-          err instanceof GnaniError,
-          `Expected GnaniError, got ${err?.constructor?.name}`
-        );
+        assert.ok(err instanceof GnaniError, `Expected GnaniError, got ${err?.constructor?.name}`);
         assert.equal(err.code, "QUEUE_FULL", `Expected QUEUE_FULL code, got '${err.code}'`);
-        assert.match(err.message.toLowerCase(), /busy|queue/, "Error message should mention busy or queue");
+        assert.match(
+          err.message.toLowerCase(),
+          /busy|queue/,
+          "Error message should mention busy or queue"
+        );
         return true;
       }
     );
@@ -178,7 +202,9 @@ describe("gnani-client bounded queue and cancel", () => {
     await assert.rejects(
       () => jobPromise,
       (err) => {
-        assert.ok(err instanceof GnaniError || err.name.includes("Abort") || err.name.includes("Timeout"));
+        assert.ok(
+          err instanceof GnaniError || err.name.includes("Abort") || err.name.includes("Timeout")
+        );
         return true;
       }
     );
@@ -192,7 +218,7 @@ describe("gnani-ipc gnani:cancel handler", () => {
       "handleCancel must be exported from gnani-ipc for the gnani:cancel IPC channel"
     );
 
-    const result = await handleCancel(null, "non-existent-id");
+    const result = await handleCancel(ipcFixture.event, "non-existent-id");
     assert.equal(typeof result, "object");
   });
 });

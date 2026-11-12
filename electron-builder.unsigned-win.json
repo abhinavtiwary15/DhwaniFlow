@@ -71,34 +71,37 @@
     "!**/node_modules/**/*.ts",
     "!**/node_modules/**/*.map",
     "!**/node_modules/**/CHANGELOG*",
-    "!**/node_modules/**/.github/**"
+    "!**/node_modules/**/.github/**",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ],
-  "asarUnpack": [
-    "**/node_modules/better-sqlite3/**/*",
-    "**/node_modules/@napi-rs/keyring/**/*"
-  ],
+  "asarUnpack": ["**/node_modules/better-sqlite3/**/*", "**/node_modules/@napi-rs/keyring/**/*"],
   "extraResources": [
     {
       "from": "src/assets",
       "to": "src/assets",
-      "filter": [
-        "**/*",
-        "!fonts/yowza/**"
-      ]
+      "filter": ["**/*", "!fonts/yowza/**"]
     },
     {
       "from": "resources/bin/",
       "to": "bin/",
-      "filter": [
-        "windows-key-listener*",
-        "windows-fast-paste*"
-      ]
+      "filter": ["windows-key-listener.exe", "windows-fast-paste.exe", "windows-helpers.json"]
+    },
+    {
+      "from": "resources/windows-command-helper.ps1",
+      "to": "windows-command-helper.ps1"
+    },
+    {
+      "from": "LICENSE",
+      "to": "LICENSE.dhwaniflow"
+    },
+    {
+      "from": "THIRD_PARTY_NOTICES.md",
+      "to": "third-party-notices.md"
     }
   ],
   "win": {
-    "target": [
-      "nsis"
-    ],
+    "target": ["nsis"],
     "icon": "src/assets/icon.ico",
     "forceCodeSigning": false
   },

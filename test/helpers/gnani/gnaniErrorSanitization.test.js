@@ -1,3 +1,5 @@
+const ipcFixture = require("../harness/ipc-environment").installIpcEnvironment();
+require("node:test").after(() => ipcFixture.restore());
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
 const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
@@ -27,10 +29,12 @@ describe("P0-1c Error Sanitization", () => {
           "Content-Type": "application/json",
           "X-Echoed-Secret": apiKeyHeader,
         });
-        res.end(JSON.stringify({
-          error: `Invalid token: ${apiKeyHeader}`,
-          message: `Authentication failed for key ${apiKeyHeader}`,
-        }));
+        res.end(
+          JSON.stringify({
+            error: `Invalid token: ${apiKeyHeader}`,
+            message: `Authentication failed for key ${apiKeyHeader}`,
+          })
+        );
         return;
       }
 
@@ -132,7 +136,7 @@ describe("P0-1c Error Sanitization", () => {
     process.env.GNANI_API_URL = serverUrl;
 
     try {
-      await handleTranscribe({}, wav, {}, envManager);
+      await handleTranscribe(ipcFixture.event, wav, {}, envManager);
       assert.fail("Expected handleTranscribe to reject");
     } catch (err) {
       assert.ok(!err.message.includes(SYNTHETIC_KEY), "Key leaked in IPC error message");

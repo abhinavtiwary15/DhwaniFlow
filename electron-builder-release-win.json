@@ -1,0 +1,6 @@
+{
+  "extends": "./electron-builder.unsigned-win.json",
+  "win": {
+    "forceCodeSigning": true
+  }
+}

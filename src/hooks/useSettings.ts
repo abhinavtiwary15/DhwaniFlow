@@ -14,13 +14,14 @@ export interface TranscriptionSettings {
   showLatencyBadge: boolean;
   customDictionary: string[];
   snippets: Snippet[];
-  showTranscriptionPreview: boolean;
 }
 
 export interface HotkeySettings {
   dictationKey: string;
   activeDictationKey: string | null;
   activationMode: "tap" | "push";
+  commandKey: string;
+  commandModeEnabled: boolean;
 }
 
 export interface MicrophoneSettings {
@@ -32,10 +33,8 @@ export interface MicrophoneSettings {
 }
 
 export interface PrivacySettings {
-  audioRetentionDays: number;
   transcriptRetentionDays: number;
   dataRetentionEnabled: boolean;
-  saveDiscardedTranscriptions: boolean;
 }
 
 export interface ThemeSettings {

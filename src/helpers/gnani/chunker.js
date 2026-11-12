@@ -72,8 +72,8 @@ function splitWav(wavBuffer, options = {}) {
   const buffer = Buffer.isBuffer(wavBuffer)
     ? wavBuffer
     : ArrayBuffer.isView(wavBuffer)
-    ? Buffer.from(wavBuffer.buffer, wavBuffer.byteOffset, wavBuffer.byteLength)
-    : Buffer.from(wavBuffer);
+      ? Buffer.from(wavBuffer.buffer, wavBuffer.byteOffset, wavBuffer.byteLength)
+      : Buffer.from(wavBuffer);
 
   const totalDuration = meta.durationSeconds;
 
@@ -177,9 +177,7 @@ function splitWav(wavBuffer, options = {}) {
  */
 function cleanWord(w) {
   if (!w || typeof w !== "string") return "";
-  return w
-    .toLowerCase()
-    .replace(/^[\s.,!?;:।'"“”‘’()[\]{}]+|[\s.,!?;:।'"“”‘’()[\]{}]+$/g, "");
+  return w.toLowerCase().replace(/^[\s.,!?;:।'"“”‘’()[\]{}]+|[\s.,!?;:।'"“”‘’()[\]{}]+$/g, "");
 }
 
 /**
@@ -197,9 +195,7 @@ function cleanWord(w) {
  */
 function joinTranscripts(transcripts, options = {}) {
   if (!transcripts || transcripts.length === 0) return "";
-  const valid = transcripts.map((t) => (t || "").trim()).filter(Boolean);
-  if (valid.length === 0) return "";
-  if (valid.length === 1) return valid[0];
+  const valid = transcripts.map((t) => (t || "").trim());
 
   const maxOverlapWords = typeof options === "number" ? options : (options?.maxOverlapWords ?? 4);
   const chunks = Array.isArray(options) ? options : (options?.chunks ?? null);
@@ -212,13 +208,20 @@ function joinTranscripts(transcripts, options = {}) {
 
   for (let i = 1; i < valid.length; i++) {
     const nextText = valid[i];
+    if (!nextText) continue;
+    if (!result) {
+      result = nextText;
+      continue;
+    }
 
     // Determine if this boundary was a hard cut (with audio overlap)
     let isHardCut = true;
     if (explicitHardCut !== null) {
       isHardCut = explicitHardCut;
-    } else if (chunks && chunks[i - 1]) {
+    } else if (chunks && chunks[i - 1] && valid[i - 1]) {
       isHardCut = Boolean(chunks[i - 1].isHardCut);
+    } else if (chunks) {
+      isHardCut = false;
     }
 
     // Silence cuts must NEVER drop words — only hard cuts with overlap get deduplicated

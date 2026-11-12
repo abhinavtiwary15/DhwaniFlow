@@ -109,7 +109,7 @@ export async function resolvePreferredMicrophone({
   mediaDevices = navigator.mediaDevices,
   forceSystemDefault = false,
   refreshSystemDefault = false,
-  getSystemDefault = (options) => window.electronAPI?.getSystemDefaultMicrophone?.(options),
+  getSystemDefault = async () => null,
 }) {
   const effectiveSettings = forceSystemDefault
     ? { ...settings, microphoneSelectionMode: "system", preferBuiltInMic: false }

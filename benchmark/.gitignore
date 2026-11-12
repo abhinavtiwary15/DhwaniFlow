@@ -1,7 +1,6 @@
 # Ignore generated benchmark audio and raw results
 audio/**/*.wav
 audio/*.wav
-results/raw/*.json
 !audio/.gitkeep
 !results/.gitkeep
 !results/manual_phone_voice_typing.csv

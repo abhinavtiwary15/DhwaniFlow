@@ -16,11 +16,12 @@ export interface SettingsState {
   uiLanguage: string;
   dictationKey: string;
   activeDictationKey: string | null;
+  commandKey: string;
+  commandModeEnabled: boolean;
   activationMode: "tap" | "push";
-  notificationsEnabled: boolean;
-  autoUpdatesEnabled: boolean;
+
   audioCuesEnabled: boolean;
-  pauseMediaOnDictation: boolean;
+
   floatingIconAutoHide: boolean;
   startMinimized: boolean;
   panelStartPosition: string;
@@ -29,18 +30,16 @@ export interface SettingsState {
   selectedMicDeviceId: string;
   selectedMicDeviceLabel: string;
   micWarmHoldSeconds: number;
-  autoLearnCorrections: boolean;
-  showTranscriptionPreview: boolean;
+
   autoPasteEnabled: boolean;
   keepTranscriptionInClipboard: boolean;
-  audioRetentionDays: number;
+
   transcriptRetentionDays: number;
   dataRetentionEnabled: boolean;
-  saveDiscardedTranscriptions: boolean;
+
   preferredLanguage: string;
   customDictionary: string[];
   snippets: Snippet[];
-  customPrompts: Record<string, string>;
 
   // Gnani Speech Configuration
   gnaniLanguage: string;
@@ -51,10 +50,11 @@ export interface SettingsState {
   setDictationKey: (dictationKey: string) => void;
   setActiveDictationKey: (activeDictationKey: string | null) => void;
   setActivationMode: (activationMode: "tap" | "push") => void;
-  setNotificationsEnabled: (enabled: boolean) => void;
-  setAutoUpdatesEnabled: (enabled: boolean) => void;
+  setCommandKey: (commandKey: string) => void;
+  setCommandModeEnabled: (enabled: boolean) => void;
+
   setAudioCuesEnabled: (enabled: boolean) => void;
-  setPauseMediaOnDictation: (enabled: boolean) => void;
+
   setFloatingIconAutoHide: (enabled: boolean) => void;
   setStartMinimized: (enabled: boolean) => void;
   setPanelStartPosition: (pos: string) => void;
@@ -62,12 +62,10 @@ export interface SettingsState {
   setPreferBuiltInMic: (prefer: boolean) => void;
   setSelectedMicDevice: (id: string, label: string) => void;
   setMicWarmHoldSeconds: (seconds: number) => void;
-  setAutoLearnCorrections: (enabled: boolean) => void;
-  setShowTranscriptionPreview: (enabled: boolean) => void;
+
   setAutoPasteEnabled: (enabled: boolean) => void;
   setKeepTranscriptionInClipboard: (enabled: boolean) => void;
-  setSaveDiscardedTranscriptions: (enabled: boolean) => void;
-  setAudioRetentionDays: (days: number) => void;
+
   setTranscriptRetentionDays: (days: number) => void;
   setDataRetentionEnabled: (enabled: boolean) => void;
   setGnaniLanguage: (gnaniLanguage: string) => void;
@@ -79,15 +77,42 @@ export interface SettingsState {
   updateCustomDictionary: (patch: { add?: string[]; remove?: string[] }) => void;
 }
 
+async function persistSetting(key: string, value: any) {
+  if (typeof window !== "undefined") {
+    try {
+      await window.electronAPI?.setSetting?.(key, value);
+      const accepted = await window.electronAPI?.getSetting?.(key, value);
+      if (accepted !== undefined) value = accepted;
+      useSettingsStore.setState({ [key]: value });
+    } catch {
+      try {
+        const persisted = await window.electronAPI?.getSettings?.();
+        if (persisted) useSettingsStore.setState(migrateSettings(persisted));
+      } catch {}
+      console.warn("Settings change was not saved");
+      return;
+    }
+    try {
+      if (window.localStorage) {
+        const raw = window.localStorage.getItem("dhwaniflow-settings");
+        const curr = raw ? JSON.parse(raw) : {};
+        curr[key] = value;
+        window.localStorage.setItem("dhwaniflow-settings", JSON.stringify(curr));
+      }
+    } catch {}
+  }
+}
+
 export const useSettingsStore = create<SettingsState>()((set) => ({
   uiLanguage: "en",
   dictationKey: "Control+Space",
   activeDictationKey: null,
+  commandKey: "Control+Alt+Space",
+  commandModeEnabled: false,
   activationMode: "push",
-  notificationsEnabled: true,
-  autoUpdatesEnabled: false,
+
   audioCuesEnabled: true,
-  pauseMediaOnDictation: false,
+
   floatingIconAutoHide: false,
   startMinimized: false,
   panelStartPosition: "center",
@@ -96,57 +121,108 @@ export const useSettingsStore = create<SettingsState>()((set) => ({
   selectedMicDeviceId: "",
   selectedMicDeviceLabel: "",
   micWarmHoldSeconds: 0,
-  autoLearnCorrections: false,
-  showTranscriptionPreview: true,
+
   autoPasteEnabled: true,
   keepTranscriptionInClipboard: true,
-  audioRetentionDays: 30,
+
   transcriptRetentionDays: 30,
   dataRetentionEnabled: true,
-  saveDiscardedTranscriptions: false,
+
   preferredLanguage: "auto",
   customDictionary: [],
   snippets: [],
-  customPrompts: {},
 
   gnaniLanguage: "hi-IN",
   showLatencyBadge: true,
 
-  setUiLanguage: (uiLanguage) => set({ uiLanguage }),
+  setUiLanguage: (uiLanguage) => {
+    set({ uiLanguage });
+    persistSetting("uiLanguage", uiLanguage);
+  },
   setDictationKey: (dictationKey) => {
     set({ dictationKey });
-    window.electronAPI?.notifyHotkeyChanged?.(dictationKey);
+    persistSetting("dictationKey", dictationKey);
   },
   setActiveDictationKey: (activeDictationKey) => set({ activeDictationKey }),
+  setCommandKey: (commandKey) => {
+    set({ commandKey });
+    persistSetting("commandKey", commandKey);
+  },
+  setCommandModeEnabled: (commandModeEnabled) => {
+    set({ commandModeEnabled });
+    persistSetting("commandModeEnabled", commandModeEnabled);
+  },
   setActivationMode: (activationMode) => {
     set({ activationMode });
-    window.electronAPI?.notifyActivationModeChanged?.(activationMode);
+    persistSetting("activationMode", activationMode);
   },
-  setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
-  setAutoUpdatesEnabled: (autoUpdatesEnabled) => set({ autoUpdatesEnabled }),
-  setAudioCuesEnabled: (audioCuesEnabled) => set({ audioCuesEnabled }),
-  setPauseMediaOnDictation: (pauseMediaOnDictation) => set({ pauseMediaOnDictation }),
-  setFloatingIconAutoHide: (floatingIconAutoHide) => set({ floatingIconAutoHide }),
-  setStartMinimized: (startMinimized) => set({ startMinimized }),
-  setPanelStartPosition: (panelStartPosition) => set({ panelStartPosition }),
-  setMicrophoneSelectionMode: (microphoneSelectionMode) => set({ microphoneSelectionMode }),
-  setPreferBuiltInMic: (preferBuiltInMic) => set({ preferBuiltInMic }),
-  setSelectedMicDevice: (selectedMicDeviceId, selectedMicDeviceLabel) =>
-    set({ selectedMicDeviceId, selectedMicDeviceLabel }),
-  setMicWarmHoldSeconds: (micWarmHoldSeconds) => set({ micWarmHoldSeconds }),
-  setAutoLearnCorrections: (autoLearnCorrections) => set({ autoLearnCorrections }),
-  setShowTranscriptionPreview: (showTranscriptionPreview) => set({ showTranscriptionPreview }),
-  setAutoPasteEnabled: (autoPasteEnabled) => set({ autoPasteEnabled }),
-  setKeepTranscriptionInClipboard: (keepTranscriptionInClipboard) =>
-    set({ keepTranscriptionInClipboard }),
-  setSaveDiscardedTranscriptions: (saveDiscardedTranscriptions) =>
-    set({ saveDiscardedTranscriptions }),
-  setAudioRetentionDays: (audioRetentionDays) => set({ audioRetentionDays }),
-  setTranscriptRetentionDays: (transcriptRetentionDays) => set({ transcriptRetentionDays }),
-  setDataRetentionEnabled: (dataRetentionEnabled) => set({ dataRetentionEnabled }),
-  setGnaniLanguage: (gnaniLanguage) => set({ gnaniLanguage }),
-  setShowLatencyBadge: (showLatencyBadge) => set({ showLatencyBadge }),
-  updateTranscriptionSettings: (patch) => set((s) => ({ ...s, ...patch })),
+
+  setAudioCuesEnabled: (audioCuesEnabled) => {
+    set({ audioCuesEnabled });
+    persistSetting("audioCuesEnabled", audioCuesEnabled);
+  },
+
+  setFloatingIconAutoHide: (floatingIconAutoHide) => {
+    set({ floatingIconAutoHide });
+    persistSetting("floatingIconAutoHide", floatingIconAutoHide);
+  },
+  setStartMinimized: (startMinimized) => {
+    set({ startMinimized });
+    persistSetting("startMinimized", startMinimized);
+  },
+  setPanelStartPosition: (panelStartPosition) => {
+    set({ panelStartPosition });
+    persistSetting("panelStartPosition", panelStartPosition);
+  },
+  setMicrophoneSelectionMode: (microphoneSelectionMode) => {
+    set({ microphoneSelectionMode });
+    persistSetting("microphoneSelectionMode", microphoneSelectionMode);
+  },
+  setPreferBuiltInMic: (preferBuiltInMic) => {
+    set({ preferBuiltInMic });
+    persistSetting("preferBuiltInMic", preferBuiltInMic);
+  },
+  setSelectedMicDevice: (selectedMicDeviceId, selectedMicDeviceLabel) => {
+    set({ selectedMicDeviceId, selectedMicDeviceLabel });
+    persistSetting("selectedMicDeviceId", selectedMicDeviceId);
+    persistSetting("selectedMicDeviceLabel", selectedMicDeviceLabel);
+  },
+  setMicWarmHoldSeconds: (micWarmHoldSeconds) => {
+    set({ micWarmHoldSeconds });
+    persistSetting("micWarmHoldSeconds", micWarmHoldSeconds);
+  },
+
+  setAutoPasteEnabled: (autoPasteEnabled) => {
+    set({ autoPasteEnabled });
+    persistSetting("autoPasteEnabled", autoPasteEnabled);
+  },
+  setKeepTranscriptionInClipboard: (keepTranscriptionInClipboard) => {
+    set({ keepTranscriptionInClipboard });
+    persistSetting("keepTranscriptionInClipboard", keepTranscriptionInClipboard);
+  },
+
+  setTranscriptRetentionDays: (transcriptRetentionDays) => {
+    set({ transcriptRetentionDays });
+    persistSetting("transcriptRetentionDays", transcriptRetentionDays);
+  },
+  setDataRetentionEnabled: (dataRetentionEnabled) => {
+    set({ dataRetentionEnabled });
+    persistSetting("dataRetentionEnabled", dataRetentionEnabled);
+  },
+  setGnaniLanguage: (gnaniLanguage) => {
+    set({ gnaniLanguage });
+    persistSetting("gnaniLanguage", gnaniLanguage);
+  },
+  setShowLatencyBadge: (showLatencyBadge) => {
+    set({ showLatencyBadge });
+    persistSetting("showLatencyBadge", showLatencyBadge);
+  },
+  updateTranscriptionSettings: (patch) => {
+    set((s) => ({ ...s, ...patch }));
+    for (const [k, v] of Object.entries(patch)) {
+      persistSetting(k, v);
+    }
+  },
   applyCustomDictionaryFromExternal: (customDictionary) => set({ customDictionary }),
   applySnippetsFromExternal: (snippets) => set({ snippets }),
   setSnippets: (snippets) => set({ snippets }),
@@ -166,7 +242,13 @@ export function selectPolicyEffectiveSettings<T extends SettingsState>(state: T)
   return state;
 }
 
-export async function initializeSettings(): Promise<void> {
+let settingsInitialization: Promise<void> | null = null;
+export function initializeSettings(): Promise<void> {
+  if (!settingsInitialization) settingsInitialization = loadSettings();
+  return settingsInitialization;
+}
+
+async function loadSettings(): Promise<void> {
   if (typeof window === "undefined" || !window.electronAPI) return;
   try {
     if (window.localStorage) {
@@ -181,28 +263,44 @@ export async function initializeSettings(): Promise<void> {
     }
     if (window.electronAPI.getHotkey) {
       const key = await window.electronAPI.getHotkey();
-      if (key) useSettingsStore.setState({ dictationKey: key });
+      if (key) useSettingsStore.setState({ dictationKey: key, activeDictationKey: key });
+    }
+    if (window.electronAPI.getRegisteredHotkey) {
+      const reg = await window.electronAPI.getRegisteredHotkey();
+      if (reg) useSettingsStore.setState({ activeDictationKey: reg });
+    }
+    if (window.electronAPI.getCommandHotkey) {
+      const cmdKey = await window.electronAPI.getCommandHotkey();
+      if (cmdKey) useSettingsStore.setState({ commandKey: cmdKey });
+    }
+    if (window.electronAPI.getCommandModeEnabled) {
+      const enabled = await window.electronAPI.getCommandModeEnabled();
+      useSettingsStore.setState({ commandModeEnabled: Boolean(enabled) });
     }
     if (window.electronAPI.getActivationMode) {
       const mode = await window.electronAPI.getActivationMode();
       if (mode) useSettingsStore.setState({ activationMode: mode });
     }
+    if (window.electronAPI.getSettings) {
+      try {
+        const persisted = await window.electronAPI.getSettings();
+        if (persisted && typeof persisted === "object" && Object.keys(persisted).length > 0) {
+          const migrated = migrateSettings(persisted);
+          useSettingsStore.setState(migrated as Partial<SettingsState>);
+        }
+      } catch {}
+    }
     if (window.electronAPI.onSettingUpdated) {
       window.electronAPI.onSettingUpdated((data: { key?: string; value?: any }) => {
         if (!data || !data.key) return;
-        if (data.key === "activationMode" && (data.value === "tap" || data.value === "push")) {
-          useSettingsStore.setState({ activationMode: data.value });
-        }
-        if (data.key === "dictationKey" && typeof data.value === "string") {
-          useSettingsStore.setState({ dictationKey: data.value });
-        }
+        useSettingsStore.setState({ [data.key]: data.value });
       });
     }
     if (window.electronAPI.getDictionaryEntries) {
       const entries = await window.electronAPI.getDictionaryEntries();
       if (Array.isArray(entries)) {
         useSettingsStore.setState({
-          customDictionary: entries.map((e) => (typeof e === "string" ? e : e.word)),
+          customDictionary: entries,
         });
       }
     }
@@ -223,53 +321,6 @@ export async function initializeSettings(): Promise<void> {
   }
 }
 
-export function getEffectiveCleanupModel(_state?: SettingsState): string {
-  return "";
-}
-
-export function isCloudCleanupMode(_state?: SettingsState): boolean {
-  return false;
-}
-
-export function isCloudDictationAgentMode(_state?: SettingsState): boolean {
-  return false;
-}
-
-export function isCloudTranslationMode(_state?: SettingsState): boolean {
-  return false;
-}
-
-export function selectResolvedLLMConfig(_state?: SettingsState, _scope?: string) {
-  return {
-    model: "",
-    provider: "gnani",
-    url: "",
-    apiKey: "",
-  };
-}
-
-export function getLlmDictionaryWords(settings: SettingsState = getSettings(), _options?: any): string[] {
-  return settings.customDictionary || [];
-}
-
-export function getDictionaryHintTiers(settings: SettingsState = getSettings()): string[][] {
-  return [settings.customDictionary || []];
-}
-
-export function getCloudLlmDictionaryFields(settings: SettingsState = getSettings()) {
-  return {
-    customDictionary: settings.customDictionary || [],
-  };
-}
-
-export function matchesDictionaryPrompt(_text: string, _prompt: any): boolean {
-  return false;
-}
-
-export function resolveDictationToneStyle(..._args: any[]): null {
-  return null;
-}
-
-export function selectLocalServerPrefs(..._args: any[]): Record<string, unknown> {
-  return {};
+if (typeof window !== "undefined") {
+  (window as any).__dhwaniflowGetSettings = getSettings;
 }

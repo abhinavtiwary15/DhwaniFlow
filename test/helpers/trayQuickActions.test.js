@@ -27,27 +27,18 @@ function createTrayManager(calls, { dictating = false, meetingRefusal = null } =
   return trayManager;
 }
 
-test("the tray menu leads with the dictation pill's quick actions", () => {
-  const calls = [];
-  const [listen, assistant, meeting, separator] =
-    createTrayManager(calls).buildContextMenuTemplate();
-
-  assert.deepEqual(
-    [listen.label, assistant.label, meeting.label, separator.type],
-    [
-      "app.commandMenu.startListening",
-      "app.commandMenu.askAssistant",
-      "app.commandMenu.startMeetingRecording",
-      "separator",
-    ]
+test("the tray exposes listening and no retired actions", () => {
+  const calls = [],
+    menu = createTrayManager(calls);
+  const items = menu.buildContextMenuTemplate();
+  assert.equal(items[0].label, "app.commandMenu.startListening");
+  assert.equal(items[1].type, "separator");
+  assert.equal(
+    items.some((item) => /assistant|meeting/i.test(item.label || "")),
+    false
   );
-
-  listen.click();
-  assistant.click();
-  meeting.click();
-  // Listening and a meeting start in the main process; only the assistant needs
-  // the renderer, which is the one that can open its panel.
-  assert.deepEqual(calls, ["start-dictation", "assistant", "meeting"]);
+  items[0].click();
+  assert.deepEqual(calls, ["start-dictation"]);
 });
 
 test("the tray's listen item stops the recording it reflects", () => {
@@ -57,13 +48,4 @@ test("the tray's listen item stops the recording it reflects", () => {
   assert.equal(listen.label, "app.commandMenu.stopListening");
   listen.click();
   assert.deepEqual(calls, ["stop-dictation"]);
-});
-
-test("the tray's meeting item is disabled while the org refuses meeting recording", () => {
-  const meetingItem = (meetingRefusal) =>
-    createTrayManager([], { meetingRefusal }).buildContextMenuTemplate()[2];
-
-  assert.equal(meetingItem(null).enabled, true);
-  assert.equal(meetingItem({ code: "POLICY_MEETING_RECORDING_DISABLED" }).enabled, false);
-  assert.equal(meetingItem({ code: "POLICY_UNRESOLVABLE" }).enabled, false);
 });

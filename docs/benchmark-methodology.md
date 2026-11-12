@@ -1,5 +1,7 @@
 # DhwaniFlow STT Benchmark Methodology
 
+> Historical measurements: raw result files and their SHA-256 manifest are retained under benchmark/results. Original recording hashes, provider configuration and collection provenance were not fully recorded. These reports do not establish current application latency or general superiority; historical Gnani median call time was roughly 4–5.5 seconds per clip, excluding capture.
+
 This document outlines the benchmark methodology, dataset construction, metrics, statistical testing framework, and error analysis used to evaluate Speech-to-Text performance for Hinglish developer dictation.
 
 ---
@@ -7,6 +9,7 @@ This document outlines the benchmark methodology, dataset construction, metrics,
 ## 1. Datasets
 
 ### 1.1 General Hinglish Developer Dataset (`benchmark/sentences.json`)
+
 - **Size**: 30 natural Hinglish developer sentences.
 - **Coverage**: Git commands, frontend state management (`useState`, `useEffect`), backend routing, Kubernetes deployments, database queries, and error triage.
 - **Technical Vocabulary**:
@@ -14,6 +17,7 @@ This document outlines the benchmark methodology, dataset construction, metrics,
   - **Held-Out Terms (43 terms)**: Withheld from prompt hints to evaluate zero-shot acoustic recognition.
 
 ### 1.2 Repository-Specific Vocabulary Dataset (`benchmark/sentences_project.json`)
+
 - **Size**: 12 sentences featuring 22 real camelCase, PascalCase, and kebab-case identifiers extracted directly from the application codebase (e.g., `createMainWindow`, `normalizeToAccelerator`, `spawnWlCopy`, `useSettingsStore`).
 
 ---
@@ -49,6 +53,7 @@ Every sentence was recorded under clean acoustic conditions and subsequently pas
 ## 4. Statistical Testing & Confidence Intervals
 
 All head-to-head comparisons report $95\%$ bootstrap confidence intervals:
+
 - **Resampling Method**: Non-parametric paired bootstrap with $B = 1,000$ iterations.
 - **Delta**: $\Delta = \text{Accuracy}_{\text{Gnani}} - \text{Accuracy}_{\text{Whisper}}$.
 - **Statistical Significance**: A condition is considered statistically significant if the $95\%$ confidence interval strictly excludes zero ($[\text{lower}, \text{upper}] > 0$ or $< 0$).
@@ -60,12 +65,12 @@ All head-to-head comparisons report $95\%$ bootstrap confidence intervals:
 Automated inspection via `python benchmark/report.py --misses` analyzes recurring engine failures across conditions:
 
 1. **Acoustic Confusion**:
-   - `cache`: Frequently transcribed as *"gates enable"* or *"cats enable"* due to English pronunciation variants in rapid speech.
-   - `error state`: Transcribed as *"as a state"* under noisy conditions.
+   - `cache`: Frequently transcribed as _"gates enable"_ or _"cats enable"_ due to English pronunciation variants in rapid speech.
+   - `error state`: Transcribed as _"as a state"_ under noisy conditions.
 2. **Script Divergence**:
    - Without prompt biasing, Whisper outputs purely Devanagari script for Hindi carrier words, failing exact Latin matches unless provided initial English prompts.
 3. **Number Grouping**:
-   - Postal codes like `110004` frequently transcribe as *"11 00 04"* or spoken words (*"gyarah sau chaar"*). Symmetrical normalization ensures fair scoring across both engines.
+   - Postal codes like `110004` frequently transcribe as _"11 00 04"_ or spoken words (_"gyarah sau chaar"_). Symmetrical normalization ensures fair scoring across both engines.
 
 ---
 
@@ -88,4 +93,3 @@ The benchmark execution suite operates independently of application code or inte
 
 2. **Whisper Local Execution**:
    - The Whisper runner (`benchmark/run_whisper.py`) runs local inference via `faster-whisper` on CPU (`int8` quantization) without external network dependencies.
-

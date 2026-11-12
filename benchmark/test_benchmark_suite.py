@@ -215,6 +215,19 @@ class TestGnaniRunnerFakeServer(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp_dir.name)
+        # Every fake-server test owns its audio. No ignored developer recordings
+        # or provider access are needed on a clean checkout.
+        import wave
+        audio_dir = self.tmp_path / "audio" / "clean"
+        audio_dir.mkdir(parents=True)
+        import shutil
+        shutil.copytree(Path(__file__).resolve().parent / "data", self.tmp_path / "data")
+        for index in range(1, 31):
+            with wave.open(str(audio_dir / f"s{index:02d}.wav"), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(b"\x00\x00" * 1600)
 
     def tearDown(self):
         self.tmp_dir.cleanup()
@@ -252,6 +265,7 @@ class TestGnaniRunnerFakeServer(unittest.TestCase):
                 yes=True,
             )
             raw_tmp = self.tmp_path / "raw_401.json"
+            args.base_dir = self.tmp_path
             with unittest.mock.patch.dict("os.environ", {"GNANI_API_KEY": "test_key_401"}), \
                  unittest.mock.patch("run_gnani.get_raw_output_path", return_value=raw_tmp), \
                  unittest.mock.patch("run_gnani.save_credit_log"), \
@@ -290,7 +304,7 @@ class TestGnaniRunnerFakeServer(unittest.TestCase):
         server = MockGnaniServer(Handler429)
         try:
             from run_gnani import post_gnani_request
-            dummy_wav = Path(__file__).resolve().parent / "audio" / "clean" / "s01.wav"
+            dummy_wav = self.tmp_path / "audio" / "clean" / "s01.wav"
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 res = post_gnani_request(
                     url=server.url,
@@ -348,6 +362,7 @@ class TestGnaniRunnerFakeServer(unittest.TestCase):
                 yes=True,
             )
             raw_tmp = self.tmp_path / "raw_concur.json"
+            args.base_dir = self.tmp_path
             with unittest.mock.patch.dict("os.environ", {"GNANI_API_KEY": "test_concur_key"}), \
                  unittest.mock.patch("run_gnani.get_raw_output_path", return_value=raw_tmp), \
                  unittest.mock.patch("run_gnani.save_credit_log"), \
@@ -394,6 +409,7 @@ class TestGnaniRunnerFakeServer(unittest.TestCase):
                 force=False,
                 yes=True,
             )
+            args.base_dir = self.tmp_path
             with unittest.mock.patch.dict("os.environ", {"GNANI_API_KEY": "test_key"}), \
                  unittest.mock.patch("run_gnani.get_raw_output_path", return_value=raw_tmp), \
                  unittest.mock.patch("run_gnani.save_credit_log"), \
@@ -436,6 +452,7 @@ class TestGnaniRunnerFakeServer(unittest.TestCase):
             buf_out = io.StringIO()
             buf_err = io.StringIO()
 
+            args.base_dir = self.tmp_path
             with unittest.mock.patch.dict("os.environ", {"GNANI_API_KEY": mock_auth_token}), \
                  unittest.mock.patch("run_gnani.get_raw_output_path", return_value=raw_tmp), \
                  unittest.mock.patch("run_gnani.save_credit_log"), \

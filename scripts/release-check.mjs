@@ -1,34 +1,36 @@
 #!/usr/bin/env node
 /**
  * release-check.mjs
- * 
+ *
  * Release verification script with zero external dependencies.
  * Ensures repository hygiene, absence of secrets, personal paths,
  * stale working artifacts, and unapproved branding references.
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { execSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import fs from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(__dirname, "..");
+const targetRoot =
+  process.env.RELEASE_CHECK_DIR || (process.cwd() !== repoRoot ? process.cwd() : repoRoot);
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 // Forbidden file name patterns
 const FORBIDDEN_FILE_PATTERNS = [
-  { name: '.env secrets file', regex: /^\.env(?!\.example$)/i },
-  { name: 'Log file (*.log)', regex: /\.log$/i },
-  { name: 'Certificate/key file (*.pem, *.key)', regex: /\.(pem|key)$/i },
-  { name: 'credit_log.json', regex: /^credit_log\.json$/i },
-  { name: 'probe-results*.json', regex: /^probe-results.*\.json$/i },
-  { name: '.project.json', regex: /^\.project\.json$/i },
-  { name: 'Agent transcript file (*.transcript*)', regex: /(?:^|\.)transcript(?:\.|$)/i },
-  { name: 'Agent task file (*.task*)', regex: /(?:^|\.)task(?:\.|$)/i },
-  { name: 'Handoff file (HANDOFF*.md)', regex: /^HANDOFF.*\.md$/i },
-  { name: 'Ad-hoc script (*.cjs)', regex: /^(?:update|cleanup|fix)-.*\.cjs$/i }
+  { name: ".env secrets file", regex: /^\.env(?!\.example$)/i },
+  { name: "Log file (*.log)", regex: /\.log$/i },
+  { name: "Certificate/key file (*.pem, *.key)", regex: /\.(pem|key)$/i },
+  { name: "credit_log.json", regex: /^credit_log\.json$/i },
+  { name: "probe-results*.json", regex: /^probe-results.*\.json$/i },
+  { name: ".project.json", regex: /^\.project\.json$/i },
+  { name: "Agent transcript file (*.transcript*)", regex: /(?:^|\.)transcript(?:\.|$)/i },
+  { name: "Agent task file (*.task*)", regex: /(?:^|\.)task(?:\.|$)/i },
+  { name: "Handoff file (HANDOFF*.md)", regex: /^HANDOFF.*\.md$/i },
+  { name: "Ad-hoc script (*.cjs)", regex: /^(?:update|cleanup|fix)-.*\.cjs$/i },
 ];
 
 // Forbidden text patterns
@@ -41,32 +43,54 @@ const FORBIDDEN_TEXT_PATTERNS = [
   { name: 'Agent Marker ("Antigravity")', regex: /Antigravity/ },
   { name: 'Unresolved Marker ("TODO(verify)")', regex: /TODO\(verify\)/ },
   { name: 'Absolute File URI ("file:///")', regex: /file:\/\/\// },
-  { 
-    name: 'Suspicious API Key',
+  {
+    name: "Suspicious API Key",
     regex: /(?:API[_-]?KEY|AUTH[_-]?TOKEN|SECRET[_-]?KEY)\s*[:=]\s*['"][A-Za-z0-9_\-]{24,}['"]/i,
-    ignore: /your_gnani_vachana_key_here|your_api_key_here|placeholder|customApiKey|CustomApiKey|ApiKey|leaked-/i
-  }
+    ignore:
+      /your_gnani_vachana_key_here|your_api_key_here|placeholder|customApiKey|CustomApiKey|ApiKey|leaked-/i,
+  },
 ];
 
 // Binary and ignorable extensions
 const BINARY_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.icns',
-  '.wav', '.mp3', '.ogg', '.flac', '.aac', '.m4a',
-  '.bin', '.exe', '.dll', '.so', '.dylib', '.node',
-  '.otf', '.ttf', '.woff', '.woff2', '.zip', '.tar', '.gz'
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".ico",
+  ".icns",
+  ".wav",
+  ".mp3",
+  ".ogg",
+  ".flac",
+  ".aac",
+  ".m4a",
+  ".bin",
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
+  ".node",
+  ".otf",
+  ".ttf",
+  ".woff",
+  ".woff2",
+  ".zip",
+  ".tar",
+  ".gz",
 ]);
 
 // Ignored directories during inspection
 const IGNORED_DIRS = new Set([
-  'node_modules',
-  '.git',
-  '.venv',
-  '.scratch',
-  'dist',
-  'out',
-  'coverage',
-  '.nyc_output',
-  'build'
+  "node_modules",
+  ".git",
+  ".venv",
+  ".scratch",
+  "dist",
+  "out",
+  "coverage",
+  ".nyc_output",
+  "build",
 ]);
 
 // Paths allowlisted from text content checks
@@ -74,47 +98,70 @@ const CONTENT_EXEMPT_PATHS = [];
 
 // Lines allowlisted across any file
 const ALLOWLISTED_LINES = [
-  'DhwaniFlow is built on OpenWhispr (MIT)',
-  'DhwaniFlow is built on OpenWhispr (MIT) by its contributors. See LICENSE.',
-  'Built on OpenWhispr (MIT)',
-  'Copyright (c) 2024 OpenWhispr Team',
-  'Copyright (c) 2026 Abhinav Tiwary',
-  'abhinavtiwary15'
+  "DhwaniFlow is built on OpenWhispr (MIT)",
+  "DhwaniFlow is built on OpenWhispr (MIT) by its contributors. See LICENSE.",
+  "Built on OpenWhispr (MIT)",
+  "Copyright (c) 2024 OpenWhispr Team",
+  "Copyright (c) 2026 Abhinav Tiwary",
+  "abhinavtiwary15",
 ];
 
-function getTrackedFiles() {
+function getTrackedFiles(targetDir = targetRoot) {
   try {
-    const stdout = execSync('git ls-files', { cwd: repoRoot, encoding: 'utf8' });
-    return stdout.split('\n').map(s => s.trim()).filter(Boolean);
-  } catch (err) {
-    return getLocalFiles(repoRoot);
+    const stdout = execSync("git ls-files --cached --others --exclude-standard", {
+      cwd: targetDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const list = [
+      ...new Set(
+        stdout
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      ),
+    ].filter((relative) => fs.existsSync(path.join(targetDir, relative)));
+    if (list.length > 0) return list;
+    return getLocalFiles(targetDir);
+  } catch (_err) {
+    return getLocalFiles(targetDir);
   }
 }
 
-function getLocalFiles(dir, base = '') {
+function getLocalFiles(dir, base = "") {
   let results = [];
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    if (IGNORED_DIRS.has(entry.name)) continue;
-    const relPath = base ? path.join(base, entry.name) : entry.name;
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results = results.concat(getLocalFiles(fullPath, relPath));
-    } else {
-      results.push(relPath.replace(/\\/g, '/'));
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (IGNORED_DIRS.has(entry.name)) continue;
+      const relPath = base ? path.join(base, entry.name) : entry.name;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results = results.concat(getLocalFiles(fullPath, relPath));
+      } else {
+        results.push(relPath.replace(/\\/g, "/"));
+      }
     }
+  } catch {
+    return [];
   }
   return results;
 }
 
-console.log('[release-check] Starting repository hygiene inspection...');
-const files = getTrackedFiles();
+console.log("[release-check] Starting repository hygiene inspection...");
+const files = getTrackedFiles(targetRoot);
+if (!files || files.length === 0) {
+  console.error(
+    "[release-check] FAILED: File inventory is empty. Refusing to run on empty file inventory."
+  );
+  process.exit(1);
+}
 console.log(`[release-check] Inspecting ${files.length} tracked files.`);
 
 const violations = [];
 
 // Check for junctions and symlinks across the workspace
-function checkSymlinks(dir, base = '') {
+function checkSymlinks(dir, base = "") {
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -123,8 +170,8 @@ function checkSymlinks(dir, base = '') {
       const full = path.join(dir, entry.name);
       if (entry.isSymbolicLink()) {
         violations.push({
-          file: rel.replace(/\\/g, '/'),
-          reason: 'Symlinks and junctions are forbidden'
+          file: rel.replace(/\\/g, "/"),
+          reason: "Symlinks and junctions are forbidden",
         });
         continue;
       }
@@ -136,19 +183,23 @@ function checkSymlinks(dir, base = '') {
     // ignore unreadable directories
   }
 }
-checkSymlinks(repoRoot);
+checkSymlinks(targetRoot);
 
 for (const relPath of files) {
-  const normalizedRel = relPath.replace(/\\/g, '/');
-  const fullPath = path.join(repoRoot, relPath);
+  const normalizedRel = relPath.replace(/\\/g, "/");
+  const fullPath = path.join(targetRoot, relPath);
   const fileName = path.basename(relPath);
 
   // Check tracked files in forbidden directories (.scratch/ or tools/)
-  if (normalizedRel.startsWith('.scratch/') || normalizedRel === '.scratch' ||
-      normalizedRel.startsWith('tools/') || normalizedRel === 'tools') {
+  if (
+    normalizedRel.startsWith(".scratch/") ||
+    normalizedRel === ".scratch" ||
+    normalizedRel.startsWith("tools/") ||
+    normalizedRel === "tools"
+  ) {
     violations.push({
       file: relPath,
-      reason: 'Tracked file in forbidden directory (.scratch/ or tools/)'
+      reason: "Tracked file in forbidden directory (.scratch/ or tools/)",
     });
   }
 
@@ -158,7 +209,7 @@ for (const relPath of files) {
     if (lstat.isSymbolicLink()) {
       violations.push({
         file: relPath,
-        reason: 'Forbidden symlink or junction'
+        reason: "Forbidden symlink or junction",
       });
       continue;
     }
@@ -166,7 +217,7 @@ for (const relPath of files) {
     if (stat.size > MAX_FILE_SIZE) {
       violations.push({
         file: relPath,
-        reason: `File size exceeds 5 MB limit: ${(stat.size / (1024 * 1024)).toFixed(2)} MB`
+        reason: `File size exceeds 5 MB limit: ${(stat.size / (1024 * 1024)).toFixed(2)} MB`,
       });
       continue;
     }
@@ -179,7 +230,7 @@ for (const relPath of files) {
     if (pattern.regex.test(fileName)) {
       violations.push({
         file: relPath,
-        reason: `Forbidden file name: ${pattern.name}`
+        reason: `Forbidden file name: ${pattern.name}`,
       });
       break;
     }
@@ -192,39 +243,46 @@ for (const relPath of files) {
   }
 
   // Skip self
-  if (normalizedRel.endsWith('scripts/release-check.mjs')) {
+  if (normalizedRel.endsWith("scripts/release-check.mjs")) {
     continue;
   }
 
   // Skip exempt upstream docs for content checks
-  if (CONTENT_EXEMPT_PATHS.some(exempt => normalizedRel.startsWith(exempt) || normalizedRel === exempt)) {
+  if (
+    CONTENT_EXEMPT_PATHS.some(
+      (exempt) => normalizedRel.startsWith(exempt) || normalizedRel === exempt
+    )
+  ) {
     continue;
   }
 
   // 3. Check forbidden text patterns
   let content;
   try {
-    content = fs.readFileSync(fullPath, 'utf8');
+    content = fs.readFileSync(fullPath, "utf8");
   } catch {
     continue;
   }
 
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   for (let lineNum = 1; lineNum <= lines.length; lineNum++) {
     const line = lines[lineNum - 1];
 
     // Check allowlisted exact line segments
-    if (ALLOWLISTED_LINES.some(allowed => line.includes(allowed))) {
+    if (ALLOWLISTED_LINES.some((allowed) => line.includes(allowed))) {
       continue;
     }
 
     for (const rule of FORBIDDEN_TEXT_PATTERNS) {
       // Under test/, ignore "file:///" and "/Users/" hits
-      if (normalizedRel.startsWith('test/')) {
-        if (rule.name === 'Absolute File URI ("file:///")' || rule.name === 'Unix User Path ("/Users/")') {
+      if (normalizedRel.startsWith("test/")) {
+        if (
+          rule.name === 'Absolute File URI ("file:///")' ||
+          rule.name === 'Unix User Path ("/Users/")'
+        ) {
           continue;
         }
-        if (line.includes('/Users/') || line.includes('file:///')) {
+        if (line.includes("/Users/") || line.includes("file:///")) {
           continue;
         }
       }
@@ -238,7 +296,7 @@ for (const relPath of files) {
           file: relPath,
           line: lineNum,
           rule: rule.name,
-          snippet: line.trim().slice(0, 100)
+          snippet: line.trim().slice(0, 100),
         });
       }
     }
@@ -255,9 +313,11 @@ if (violations.length > 0) {
       console.error(`  - ${v.file}: ${v.reason}`);
     }
   }
-  console.error('\nPlease fix all violations above before committing or creating a release.\n');
+  console.error("\nPlease fix all violations above before committing or creating a release.\n");
   process.exit(1);
 }
 
-console.log('[release-check] SUCCESS: All files and contents passed release hygiene checks cleanly.');
+console.log(
+  "[release-check] SUCCESS: All files and contents passed release hygiene checks cleanly."
+);
 process.exit(0);

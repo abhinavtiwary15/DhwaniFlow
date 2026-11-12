@@ -1,416 +1,188 @@
-/**
- * gnani-ipc.js
- *
- * IPC Handler registration for Gnani Speech-to-Text integration:
- * - gnani:transcribe(audioBuffer, options)
- * - gnani:test-key(key)
- * - gnani:save-key(key)
- * - gnani:scan-project(folders)
- * - gnani:get-status()
- *
- * Security & privacy:
- * - Validates all arguments (types, size under 25 MB, format and language allowlists)
- * - Reads key from encrypted secret store, NEVER sends it to the renderer
- * - gnani:test-key performs local format validation with zero credit spend
- */
-
+const { types } = require("node:util");
+const path = require("node:path");
 const {
   transcribe,
   globalQueue,
   getQueueLength,
   getActiveRequests,
-  GnaniAuthError,
+  GnaniError,
   GnaniNoKeyError,
   GnaniAudioTooLongError,
-  GnaniError,
 } = require("./gnani-client");
-const { mapLanguageCode } = require("./language-map");
-const { scanProjectFolders } = require("./project-terms");
+const { validateSender: validateSenderFrame } = require("../ipc-security");
+const { validateWavHeader } = require("./wav-utils");
+const { mapLanguageCode, KNOWN_INDIC_LANGUAGES } = require("./language-map");
 const { buildKeyterms } = require("./keyterms");
+const { scanProjectFoldersAsync } = require("./project-terms");
 const devTerms = require("./data/dev-terms.json");
-
-const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // 25 MB limit
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const ALLOWED_FORMATS = new Set(["verbatim", "transcribe", "codemix", "transliterate"]);
-
-/**
- * Validates that an audio buffer object is strictly a Buffer, Uint8Array, or ArrayBuffer.
- * Rejects plain objects, array-like objects, or spoofed buffers.
- */
-function isValidAudioBufferType(buf) {
-  if (!buf) return false;
-  if (Buffer.isBuffer(buf)) return true;
-  if (buf instanceof Uint8Array) return true;
-  if (buf instanceof ArrayBuffer) return true;
-  const tag = Object.prototype.toString.call(buf);
-  return tag === "[object Uint8Array]" || tag === "[object ArrayBuffer]";
+const validId = (value) => typeof value === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
+const invalid = (message) => new GnaniError(message, "INVALID_ARGUMENT");
+function isValidAudioBufferType(value) {
+  return Buffer.isBuffer(value) || types.isUint8Array(value) || types.isArrayBuffer(value);
 }
-
-/**
- * Validates the IPC event sender frame.
- * Enforces:
- * - Top-level frame only (event.senderFrame.parent === null)
- * - App origin check (file:, app:, or dev localhost/127.0.0.1)
- * - Owned BrowserWindow check
- */
-function validateSenderFrame(event) {
-  if (!event) return;
-
-  if (event.senderFrame) {
-    if (event.senderFrame.parent !== null && event.senderFrame.parent !== undefined) {
-      throw new GnaniError("IPC senderFrame must be top-level frame", "FORBIDDEN_FRAME");
-    }
-
-    if (event.senderFrame.url) {
-      let parsed;
-      try {
-        parsed = new URL(event.senderFrame.url);
-      } catch {
-        throw new GnaniError("IPC senderFrame has invalid URL", "FORBIDDEN_FRAME");
-      }
-
-      const isDevOrTest = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
-      const allowedProtocols = new Set(["file:", "app:", "chrome-extension:"]);
-      const isAllowedProtocol = allowedProtocols.has(parsed.protocol);
-      const isAllowedDevHost = isDevOrTest && (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1");
-
-      if (!isAllowedProtocol && !isAllowedDevHost) {
-        throw new GnaniError(`IPC request rejected: untrusted sender origin '${parsed.origin}'`, "FORBIDDEN_FRAME");
-      }
-    }
-  }
-
-  if (event.sender) {
-    try {
-      const { BrowserWindow } = require("electron");
-      if (BrowserWindow && typeof BrowserWindow.fromWebContents === "function") {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        if (!win && typeof BrowserWindow.getAllWindows === "function" && BrowserWindow.getAllWindows().length > 0) {
-          throw new GnaniError("IPC request rejected: sender does not belong to an owned window", "FORBIDDEN_FRAME");
-        }
-      }
-    } catch (err) {
-      if (err instanceof GnaniError) throw err;
-    }
-  }
-}
-
-/**
- * Resolves the Gnani API key from the encrypted secret store through environmentManager.
- * Key is never exposed to the renderer process.
- *
- * @param {object} [environmentManager]
- * @returns {string}
- */
-function resolveGnaniApiKey(environmentManager) {
-  if (environmentManager) {
-    if (typeof environmentManager.getGnaniApiKey === "function") {
-      const k = environmentManager.getGnaniApiKey();
-      if (k) return k;
-    }
-    if (typeof environmentManager._getKey === "function") {
-      const k = environmentManager._getKey("GNANI_API_KEY");
-      if (k) return k;
-    }
-  }
-  return process.env.GNANI_API_KEY || "";
-}
-
-/**
- * Validates the structure and characters of a Gnani API key.
- *
- * @param {string} key
- * @returns {boolean}
- */
 function isValidKeyFormat(key) {
-  if (!key || typeof key !== "string") return false;
-  const trimmed = key.trim();
-  if (trimmed.length < 16 || trimmed.length > 256) return false;
-  if (/[\s\r\n]/.test(trimmed)) return false;
-  // Key should contain standard API token characters (alphanumeric, dashes, underscores)
-  return /^[A-Za-z0-9_\-]+$/.test(trimmed);
+  return typeof key === "string" && /^[A-Za-z0-9_-]{16,256}$/.test(key.trim());
+}
+function resolveGnaniApiKey(environment) {
+  return environment?.getGnaniApiKey?.() || environment?._getKey?.("GNANI_API_KEY") || "";
 }
 
-/**
- * Handler for gnani:transcribe IPC.
- */
-async function handleTranscribe(event, audioBuffer, options = {}, environmentManager = null, databaseManager = null) {
-  // 1. Sender verification
+async function handleTranscribe(event, audio, options = {}, environment, database) {
   validateSenderFrame(event);
-
-  // 2. Audio buffer validation
-  if (!audioBuffer) {
-    throw new GnaniError("Missing audio buffer", "INVALID_ARGUMENT");
+  if (!isValidAudioBufferType(audio)) throw invalid("Invalid audio buffer type");
+  if (!audio.byteLength) throw invalid("Audio cannot be empty");
+  if (audio.byteLength > MAX_AUDIO_BYTES) throw new GnaniAudioTooLongError();
+  const wav = types.isArrayBuffer(audio)
+    ? Buffer.from(audio)
+    : Buffer.from(audio.buffer, audio.byteOffset, audio.byteLength);
+  try {
+    if (!validateWavHeader(wav).dataSize) throw invalid("No audio samples");
+  } catch {
+    throw invalid("Invalid WAV audio");
   }
-
-  const byteLength = Buffer.isBuffer(audioBuffer)
-    ? audioBuffer.length
-    : (audioBuffer.byteLength !== undefined ? audioBuffer.byteLength : (audioBuffer.length || 0));
-
-  if (byteLength === 0) {
-    throw new GnaniError("Audio buffer cannot be empty", "INVALID_ARGUMENT");
-  }
-
-  if (byteLength > MAX_AUDIO_BYTES) {
-    throw new GnaniAudioTooLongError(`Audio buffer exceeds maximum limit of 25 MB (${byteLength} bytes)`);
-  }
-
-  if (!isValidAudioBufferType(audioBuffer)) {
-    throw new GnaniError("Invalid audio buffer type. Expected Buffer, Uint8Array, or ArrayBuffer", "INVALID_ARGUMENT");
-  }
-
-  let wavBuf;
-  if (Buffer.isBuffer(audioBuffer)) {
-    wavBuf = audioBuffer;
-  } else if (audioBuffer instanceof Uint8Array || Object.prototype.toString.call(audioBuffer) === "[object Uint8Array]") {
-    wavBuf = Buffer.from(audioBuffer.buffer, audioBuffer.byteOffset, audioBuffer.byteLength);
-  } else if (audioBuffer instanceof ArrayBuffer || Object.prototype.toString.call(audioBuffer) === "[object ArrayBuffer]") {
-    wavBuf = Buffer.from(audioBuffer);
-  } else {
-    throw new GnaniError("Invalid audio buffer type", "INVALID_ARGUMENT");
-  }
-
-  const opts = options && typeof options === "object" ? options : {};
-
-  // 3. Validate format allowlist
-  let effectiveFormat = "codemix";
-  if (opts.format !== undefined && opts.format !== null) {
-    if (typeof opts.format !== "string" || !ALLOWED_FORMATS.has(opts.format)) {
-      throw new GnaniError(
-        `Invalid format: '${opts.format}'. Allowed: verbatim, transcribe, codemix, transliterate`,
-        "INVALID_ARGUMENT"
-      );
-    }
-    effectiveFormat = opts.format;
-  }
-
-  // 4. Validate and map language
-  if (opts.language !== undefined && opts.language !== null) {
-    if (typeof opts.language !== "string" || opts.language.length > 50 || !/^[A-Za-z0-9_\-,\s]+$/.test(opts.language)) {
-      throw new GnaniError("Invalid language option: expected string", "INVALID_ARGUMENT");
-    }
-  }
-  const effectiveLanguage = mapLanguageCode(opts.language, "hi-IN");
-
-  // 5. Validate keyterms (array of <= 200 strings, each <= 64 chars)
-  if (opts.keyterms !== undefined && opts.keyterms !== null) {
-    if (!Array.isArray(opts.keyterms) && typeof opts.keyterms !== "string") {
-      throw new GnaniError("Invalid keyterms option: expected string or array of strings", "INVALID_ARGUMENT");
-    }
-    if (Array.isArray(opts.keyterms)) {
-      if (opts.keyterms.length > 200) {
-        throw new GnaniError("Keyterms array cannot exceed 200 items", "INVALID_ARGUMENT");
-      }
-      for (const term of opts.keyterms) {
-        if (typeof term !== "string") {
-          throw new GnaniError("Each keyterm must be a string", "INVALID_ARGUMENT");
-        }
-        if (term.length > 64) {
-          throw new GnaniError("Each keyterm must be at most 64 characters", "INVALID_ARGUMENT");
-        }
-      }
-    } else if (typeof opts.keyterms === "string" && opts.keyterms.length > 2000) {
-      throw new GnaniError("Keyterms string exceeds maximum allowed length", "INVALID_ARGUMENT");
-    }
-  }
-
-  // Compose keyterms: dictionary words first, then dev-terms.json; dedupe, cap 200 and 2,000 characters
-  let dictWords = [];
-  if (databaseManager && typeof databaseManager.getDictionary === "function") {
-    try {
-      dictWords = databaseManager.getDictionary() || [];
-    } catch {}
-  }
-  const callerTerms = Array.isArray(opts.keyterms)
-    ? opts.keyterms
-    : (opts.keyterms ? [opts.keyterms] : []);
-  const composedKeyterms = buildKeyterms([dictWords, callerTerms, devTerms], {
+  if (
+    !options ||
+    typeof options !== "object" ||
+    Array.isArray(options) ||
+    Object.keys(options).some(
+      (key) => !["language", "format", "keyterms", "requestId"].includes(key)
+    )
+  )
+    throw invalid("Invalid transcription options");
+  if (options.requestId !== undefined && !validId(options.requestId))
+    throw invalid("Invalid request ID");
+  const format = options.format ?? "transcribe";
+  if (!ALLOWED_FORMATS.has(format)) throw invalid("Invalid speech format");
+  const language = options.language ?? "hi-IN";
+  if (
+    typeof language !== "string" ||
+    language.length > 50 ||
+    language.split(",").length > 4 ||
+    !language
+      .split(",")
+      .every(
+        (part) =>
+          /^(?:auto|indic-auto)$/i.test(part.trim()) ||
+          (/^[a-z]{2}(?:[-_]IN)?$/i.test(part.trim()) &&
+            KNOWN_INDIC_LANGUAGES.has(part.trim().slice(0, 2).toLowerCase()))
+      )
+  )
+    throw invalid("Unsupported speech language");
+  let caller = options.keyterms ?? [];
+  if (typeof caller === "string")
+    caller = caller
+      .split(",")
+      .map((term) => term.trim())
+      .filter(Boolean);
+  if (
+    !Array.isArray(caller) ||
+    caller.length > 200 ||
+    caller.some((term) => typeof term !== "string" || term.length > 64) ||
+    caller.join(", ").length > 2000
+  )
+    throw invalid("Invalid keyterms");
+  const key = resolveGnaniApiKey(environment);
+  if (!key) throw new GnaniNoKeyError();
+  const keyterms = buildKeyterms([database?.getDictionary?.() || [], caller, devTerms], {
     maxTerms: 200,
     maxChars: 2000,
   });
-
-  // Retrieve secret key - never send to renderer
-  const apiKey = resolveGnaniApiKey(environmentManager);
-  if (!apiKey) {
-    throw new GnaniNoKeyError("GNANI_API_KEY is not configured in secure storage");
-  }
-
-  try {
-    return await transcribe({
-      wav: wavBuf,
-      language: effectiveLanguage,
-      format: effectiveFormat,
-      keyterms: composedKeyterms,
-      apiKey,
-      requestId: opts.requestId,
-    });
-  } catch (err) {
-    if (err instanceof GnaniError) {
-      throw err;
-    }
-    throw new GnaniError("Transcription failed due to an unexpected error.", "INTERNAL_ERROR");
-  }
+  return transcribe({
+    wav,
+    apiKey: key,
+    language: mapLanguageCode(language, "hi-IN"),
+    format,
+    keyterms,
+    requestId: options.requestId,
+  });
 }
-
-/**
- * Handler for gnani:test-key IPC.
- * Validates key format locally without making network calls or spending credits.
- */
-async function handleTestKey(event, keyToTest, environmentManager = null) {
-  const key = keyToTest || resolveGnaniApiKey(environmentManager);
-
-  if (!isValidKeyFormat(key)) {
-    return {
-      valid: false,
-      error: "Invalid API key format. Expected 16-256 alphanumeric characters without spaces.",
-    };
-  }
-
+async function handleCancel(event, requestId = null) {
+  validateSenderFrame(event);
+  if (requestId !== null && !validId(requestId)) throw invalid("Invalid cancellation ID");
+  return {
+    success: true,
+    cancelled: requestId ? globalQueue.cancel(requestId) : globalQueue.cancelAll(),
+  };
+}
+async function handleTestKey(event, entered, environment) {
+  validateSenderFrame(event);
+  if (!isValidKeyFormat(entered || resolveGnaniApiKey(environment)))
+    return { valid: false, error: "Invalid key format" };
   return {
     valid: true,
-    status: "saved, not verified",
-    message: "saved, not verified",
+    status: "format valid, not verified",
+    message: "Format checked locally. The speech service has not verified this key.",
   };
 }
-
-/**
- * Handler for gnani:save-key IPC.
- * Saves key into secure storage via environmentManager.
- */
-async function handleSaveKey(event, key, environmentManager = null) {
-  if (!key || typeof key !== "string" || !isValidKeyFormat(key)) {
-    throw new GnaniError("Invalid API key format. Expected 16-256 alphanumeric characters without spaces.", "INVALID_ARGUMENT");
-  }
-  const trimmed = key.trim();
-  if (!environmentManager) {
-    return { success: false, error: "Secure storage is unavailable" };
-  }
-
-  let res;
+async function handleSaveKey(event, key, environment) {
+  validateSenderFrame(event);
+  if (!isValidKeyFormat(key)) throw invalid("Invalid key format");
+  if (!environment?.saveGnaniApiKey) return { success: false, error: "Secure storage unavailable" };
   try {
-    if (typeof environmentManager.saveGnaniApiKey === "function") {
-      res = await environmentManager.saveGnaniApiKey(trimmed);
-    } else if (typeof environmentManager._saveKey === "function") {
-      res = await environmentManager._saveKey("GNANI_API_KEY", trimmed);
-    } else {
-      return { success: false, error: "Secure storage is unavailable" };
-    }
-  } catch (err) {
-    return { success: false, error: err?.message || "Failed to persist key" };
+    require("../debugLogger").registerSecret(key.trim());
+    const result = await environment.saveGnaniApiKey(key.trim());
+    if (result?.success === false)
+      return { success: false, error: "Secure storage could not save the key" };
+    return { success: true };
+  } catch {
+    return { success: false, error: "Secure storage could not save the key" };
   }
-
-  if (res && res.success === false) {
-    return { success: false, error: res.error || "Failed to save API key" };
-  }
-
-  return { success: true };
 }
-
-/**
- * Handler for gnani:scan-project IPC.
- */
-async function handleScanProject(event, folders) {
-  if (!Array.isArray(folders) || folders.length === 0) {
-    throw new GnaniError("folders must be a non-empty array of directory paths", "INVALID_ARGUMENT");
-  }
-
-  for (const f of folders) {
-    if (typeof f !== "string" || !f.trim()) {
-      throw new GnaniError("Each folder path must be a non-empty string", "INVALID_ARGUMENT");
-    }
-  }
-
-  const result = scanProjectFolders(folders);
+async function handleGetStatus(event, environment) {
+  validateSenderFrame(event);
   return {
-    terms: result.terms,
-    scannedFiles: result.scannedFiles,
-  };
-}
-
-/**
- * Handler for gnani:get-status IPC.
- */
-async function handleGetStatus(event, environmentManager = null) {
-  const apiKey = resolveGnaniApiKey(environmentManager);
-  return {
-    configured: Boolean(apiKey && isValidKeyFormat(apiKey)),
+    configured: isValidKeyFormat(resolveGnaniApiKey(environment)),
     queueLength: getQueueLength(),
     activeRequests: getActiveRequests(),
     model: "prisma-v3.0",
     defaultLanguage: "hi-IN",
   };
 }
-
-/**
- * Handler for gnani:cancel IPC.
- * Aborts the active transcription or dequeues a pending job.
- */
-async function handleCancel(event, requestId = null) {
-  if (requestId) {
-    const cancelled = globalQueue.cancel(requestId);
-    return { success: true, cancelled };
-  }
-  const cancelled = globalQueue.cancelAll();
-  return { success: true, cancelled };
+async function handleScanProject(event, folders) {
+  validateSenderFrame(event);
+  if (
+    !Array.isArray(folders) ||
+    !folders.length ||
+    folders.length > 8 ||
+    folders.some(
+      (folder) =>
+        typeof folder !== "string" ||
+        folder.length > 4096 ||
+        folder.includes("\0") ||
+        !path.isAbsolute(folder)
+    )
+  )
+    throw invalid("Invalid project folders");
+  return scanProjectFoldersAsync(folders);
 }
-
-/**
- * Registers all Gnani IPC handlers with ipcMain.
- *
- * @param {object} params
- * @param {object} [params.ipcMain] - Electron ipcMain or mock
- * @param {object} [params.environmentManager] - EnvironmentManager instance
- * @param {object} [params.databaseManager] - DatabaseManager instance
- */
-function registerGnaniIpc({ ipcMain, environmentManager, databaseManager } = {}) {
-  let main = ipcMain;
-  if (!main) {
-    try {
-      main = require("electron").ipcMain;
-    } catch {
-      // Electron not available (e.g. running in pure unit test without mock)
-      return;
-    }
-  }
-
-  if (!main || typeof main.handle !== "function") return;
-
-  main.handle("gnani:transcribe", (event, audioBuffer, options) =>
-    handleTranscribe(event, audioBuffer, options, environmentManager, databaseManager)
+function registerGnaniIpc({
+  ipcMain = require("electron").ipcMain,
+  environmentManager,
+  databaseManager,
+} = {}) {
+  ipcMain.handle("gnani:transcribe", (event, audio, options) =>
+    handleTranscribe(event, audio, options, environmentManager, databaseManager)
   );
-
-  main.handle("gnani:cancel", (event, requestId) =>
-    handleCancel(event, requestId)
-  );
-
-  main.handle("gnani:test-key", (event, keyToTest) =>
-    handleTestKey(event, keyToTest, environmentManager)
-  );
-
-  main.handle("gnani:save-key", (event, key) =>
-    handleSaveKey(event, key, environmentManager)
-  );
-
-  main.handle("gnani:scan-project", (event, folders) =>
-    handleScanProject(event, folders)
-  );
-
-  main.handle("gnani:get-status", (event) =>
-    handleGetStatus(event, environmentManager)
-  );
+  ipcMain.handle("gnani:cancel", handleCancel);
+  ipcMain.handle("gnani:test-key", (event, key) => handleTestKey(event, key, environmentManager));
+  ipcMain.handle("gnani:save-key", (event, key) => handleSaveKey(event, key, environmentManager));
+  ipcMain.handle("gnani:get-status", (event) => handleGetStatus(event, environmentManager));
+  ipcMain.handle("gnani:scan-project", handleScanProject);
 }
-
 module.exports = {
   registerGnaniIpc,
   handleTranscribe,
   handleCancel,
   handleTestKey,
   handleSaveKey,
-  handleScanProject,
   handleGetStatus,
-  isValidKeyFormat,
-  resolveGnaniApiKey,
+  handleScanProject,
   validateSenderFrame,
   isValidAudioBufferType,
+  isValidKeyFormat,
+  resolveGnaniApiKey,
   MAX_AUDIO_BYTES,
   ALLOWED_FORMATS,
 };

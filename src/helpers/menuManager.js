@@ -105,8 +105,7 @@ class MenuManager {
             {
               label: i18nMain.t("menu.learnMore"),
               click: async () => {
-                const { openExternalUrl } = require("./externalUrlOpener");
-                await openExternalUrl("https://github.com/abhinavtiwary15/DhwaniFlow");
+                onOpenSettings?.();
               },
             },
           ],

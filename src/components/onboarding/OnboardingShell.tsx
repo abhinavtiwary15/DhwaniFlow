@@ -378,24 +378,8 @@ export function CompactOnboardingFrame({
 
       {showLegalNotice && (
         <p className="relative z-10 mx-auto mt-auto w-full max-w-sm shrink-0 px-2 pb-4 pt-5 text-center text-xs leading-[18px] text-[var(--onboarding-text-secondary)]">
-          {t("auth.legal.prefix")}{" "}
-          <a
-            href="https://github.com/abhinavtiwary15/DhwaniFlow/blob/main/LICENSE"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--onboarding-link)] transition-colors hover:opacity-80"
-          >
-            {t("auth.legal.terms")}
-          </a>{" "}
-          {t("auth.legal.and")}{" "}
-          <a
-            href="https://github.com/abhinavtiwary15/DhwaniFlow/blob/main/SECURITY.md"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--onboarding-link)] transition-colors hover:opacity-80"
-          >
-            {t("auth.legal.privacy")}
-          </a>
+          {t("auth.legal.prefix")} <span>{t("auth.legal.terms")}</span> {t("auth.legal.and")}{" "}
+          <span>{t("auth.legal.privacy")}</span>
           {t("auth.legal.suffix")}
         </p>
       )}

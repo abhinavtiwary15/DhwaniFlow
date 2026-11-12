@@ -27,7 +27,18 @@ function isExternalBrowserUrl(url) {
 // it is given, and a relative link resolves against the file:// page, so
 // `/C:/Windows/System32/cmd.exe` would otherwise run a local program.
 function isExternalOpenUrl(url) {
-  return isExternalBrowserUrl(url) || url.startsWith("mailto:");
+  try {
+    const target = new URL(url);
+    return (
+      target.protocol === "https:" &&
+      target.hostname === "api.vachana.ai" &&
+      !target.username &&
+      !target.password &&
+      !target.port
+    );
+  } catch {
+    return false;
+  }
 }
 
 module.exports = { isAllowedAppNavigation, isExternalBrowserUrl, isExternalOpenUrl };

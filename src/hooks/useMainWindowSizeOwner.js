@@ -26,7 +26,6 @@ export function useMainWindowSizeOwner({
   isDictationActive,
   assistantOpen,
   assistantMounted,
-  assistantOpenRef,
   liveTranscriptOpen,
   liveTranscriptMounted,
   liveTranscriptOpenRef,
@@ -70,26 +69,20 @@ export function useMainWindowSizeOwner({
       }
     };
   }, []);
-
   useLayoutEffect(() => {
     dictationActiveRef.current = isDictationActive;
   }, [isDictationActive]);
-
   useLayoutEffect(() => {
     actionCountRef.current = dictationErrorActionCount;
     if (dictationErrorActionCount > 0) {
       handoffRef.current?.suppress();
     }
   }, [dictationErrorActionCount]);
-
   const lastSizeKeyRef = useRef(null);
   const panelSizeReservationRef = useRef(false);
   useEffect(() => {
     const panelOwnsWindow =
-      assistantOpenRef.current ||
-      liveTranscriptOpenRef.current ||
-      assistantMounted ||
-      liveTranscriptMounted;
+      liveTranscriptOpenRef.current || assistantMounted || liveTranscriptMounted;
     if (panelOwnsWindow) {
       panelSizeReservationRef.current = true;
       if (panelReturnSuppressedRef.current) {
@@ -99,7 +92,6 @@ export function useMainWindowSizeOwner({
       }
       return undefined;
     }
-
     const returningFromPanel = panelSizeReservationRef.current;
     panelSizeReservationRef.current = false;
     const target = resolveMainWindowSizeKey({
@@ -176,7 +168,6 @@ export function useMainWindowSizeOwner({
   }, [
     assistantOpen,
     assistantMounted,
-    assistantOpenRef,
     liveTranscriptOpen,
     liveTranscriptMounted,
     liveTranscriptOpenRef,
@@ -186,7 +177,6 @@ export function useMainWindowSizeOwner({
     dictationErrorActionCount,
     requestMainWindowSize,
   ]);
-
   useEffect(() => {
     if (
       dictationErrorActionCount > 0 ||
@@ -200,6 +190,8 @@ export function useMainWindowSizeOwner({
     // it has no compact resize to await. Release only the visual suppression.
     void handoffRef.current?.releaseAfter(async () => {});
   }, [assistantMounted, dictationErrorActionCount, handoffActive, liveTranscriptMounted]);
-
-  return { dictationErrorPillHandoffActive: handoffActive, panelReturnResizeActive };
+  return {
+    dictationErrorPillHandoffActive: handoffActive,
+    panelReturnResizeActive,
+  };
 }

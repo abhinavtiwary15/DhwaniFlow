@@ -1,3 +1,5 @@
+const ipcFixture = require("../harness/ipc-environment").installIpcEnvironment();
+require("node:test").after(() => ipcFixture.restore());
 const { test, describe } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -7,7 +9,11 @@ const Module = require("node:module");
 
 const { handleSaveKey, resolveGnaniApiKey } = require("../../../src/helpers/gnani/gnani-ipc");
 
-function loadEnvironmentManager(t, userDataDir, { encryptionAvailable = true, throwOnEncrypt = false } = {}) {
+function loadEnvironmentManager(
+  t,
+  userDataDir,
+  { encryptionAvailable = true, throwOnEncrypt = false } = {}
+) {
   const envPath = require.resolve("../../../src/helpers/environment");
   const origModule = require.cache[envPath];
   const origLoad = Module._load;
@@ -74,7 +80,7 @@ describe("P0-1d Secure Storage Fail-Closed & Env Isolation", () => {
     assert.equal(process.env.GNANI_API_KEY, undefined);
 
     // 3. handleSaveKey IPC handler must return failure to renderer
-    const ipcRes = await handleSaveKey({}, "valid-secret-key-12345", envManager);
+    const ipcRes = await handleSaveKey(ipcFixture.event, "valid-secret-key-12345", envManager);
     assert.equal(ipcRes.success, false);
     assert.equal(process.env.GNANI_API_KEY, undefined);
 
@@ -98,7 +104,10 @@ describe("P0-1d Secure Storage Fail-Closed & Env Isolation", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    const EnvironmentManager = loadEnvironmentManager(t, tmpDir, { encryptionAvailable: true, throwOnEncrypt: true });
+    const EnvironmentManager = loadEnvironmentManager(t, tmpDir, {
+      encryptionAvailable: true,
+      throwOnEncrypt: true,
+    });
     const envManager = new EnvironmentManager();
 
     // Calling saveGnaniApiKey must await rejection and return failure
@@ -107,9 +116,9 @@ describe("P0-1d Secure Storage Fail-Closed & Env Isolation", () => {
     assert.match(saveRes.error, /Keychain write failed/);
 
     // IPC handler must await and return failure
-    const ipcRes = await handleSaveKey({}, "valid-secret-key-12345", envManager);
+    const ipcRes = await handleSaveKey(ipcFixture.event, "valid-secret-key-12345", envManager);
     assert.equal(ipcRes.success, false);
-    assert.match(ipcRes.error, /Keychain write failed/);
+    assert.equal(ipcRes.error, "Secure storage could not save the key");
 
     // process.env must NOT contain the key
     assert.equal(process.env.GNANI_API_KEY, undefined);
@@ -173,7 +182,7 @@ describe("P0-1d Secure Storage Fail-Closed & Env Isolation", () => {
 
   test("handleSaveKey returns failure when environmentManager is missing", async () => {
     delete process.env.GNANI_API_KEY;
-    const res = await handleSaveKey({}, "valid-secret-key-12345", null);
+    const res = await handleSaveKey(ipcFixture.event, "valid-secret-key-12345", null);
     assert.equal(res.success, false);
     assert.equal(process.env.GNANI_API_KEY, undefined);
   });

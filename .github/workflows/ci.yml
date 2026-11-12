@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [main, dev/*, feat/*]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
     branches: [main, dev/*]
 
@@ -24,13 +24,13 @@ jobs:
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install Node Dependencies
         run: npm ci
 
       - name: Install Python Dependencies
-        run: pip install numpy soundfile scipy jiwer
+        run: pip install numpy soundfile scipy jiwer requests
 
       - name: TypeScript Typecheck
         run: npm run typecheck
@@ -51,7 +51,7 @@ jobs:
         run: node scripts/release-check.mjs
 
   build-installer:
-    name: Build Unsigned Windows Installer
+    name: Build and Verify Signed Windows Installer
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/v')
     needs: validate
@@ -71,8 +71,31 @@ jobs:
       - name: Build Renderer
         run: npm run build:renderer
 
-      - name: Build Unsigned Windows Installer
-        run: npm run dist:win
+      - name: Build Signed Windows Installer
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+        run: |
+          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) { throw 'Configure the Windows release signing certificate and password before releasing.' }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw 'An x64 Windows C compiler is required for release helpers.' }
+          $developerCommand = Join-Path $installation 'Common7\Tools\VsDevCmd.bat'
+          & cmd.exe /d /s /c "`"call `"$developerCommand`" -arch=x64 && npm run dist:win:release`""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Trusted Windows Signatures
+        shell: pwsh
+        run: |
+          $files = @('dist/win-unpacked/DhwaniFlow.exe', 'dist/win-unpacked/resources/bin/windows-key-listener.exe', 'dist/win-unpacked/resources/bin/windows-fast-paste.exe')
+          $files += @(Get-ChildItem -LiteralPath dist -Filter '*.exe' | ForEach-Object { $_.FullName })
+          foreach ($file in $files) {
+            if ((Get-AuthenticodeSignature -LiteralPath $file).Status -ne 'Valid') { throw 'A release executable does not have a trusted valid signature.' }
+          }
+
+      - name: Verify Packaged Windows Startup
+        run: npm run test:release:win
 
       - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
